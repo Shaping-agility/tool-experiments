@@ -170,6 +170,8 @@ class SalesLeadAnalyzer:
         """Close the spreadsheet connection."""
         if self.spreadsheet_manager.is_open:
             self.spreadsheet_manager.close()
+        if self._dataframe is not None:
+            self._dataframe = None
     
     def __enter__(self):
         """Context manager entry."""
