@@ -122,28 +122,25 @@ def teardown_class(cls):
 - Automatic cache refresh when larger ranges are requested
 
 ### 4. Code Refactoring Approach
-**Problem**: Duplication between similar methods
-**Solution**: Configuration-driven approach with private helper methods
+**Philosophy**: Comments are a hint for refactoring. Method-level docstrings are required for all public and private methods, but inline comments should be avoided in favor of extracting code blocks into well-named private methods. This ensures that code intent is always clear from the method structure itself, improving readability and maintainability.
+
+**Current Status**:
+- This approach has been fully applied to `SalesAnalyzer`.
+- The same refactoring is planned for `SalesLeadAnalyzer` and `SpreadsheetManager` as the next development steps.
 
 **Before**:
 ```python
-def getIndustrySalesData(self, start_date, end_date):
-    # 50+ lines of duplicated logic
-
-def getGovSalesData(self, start_date, end_date):
-    # 50+ lines of duplicated logic
+# ... code with inline comments and long methods ...
 ```
-
 **After**:
 ```python
-def getIndustrySalesData(self, start_date, end_date):
-    return self._get_sales_data('industry', start_date, end_date)
+def _select_and_rename_required_columns(...):
+    """Select and rename required columns, and convert Date column to datetime."""
+    ...
 
-def getGovSalesData(self, start_date, end_date):
-    return self._get_sales_data('government', start_date, end_date)
-
-def _get_sales_data(self, config_key, start_date, end_date):
-    # Single implementation with config-driven behavior
+def _filter_result_by_date_range(...):
+    """Filter DataFrame by date range and reset index."""
+    ...
 ```
 
 ## Data Sources
@@ -184,6 +181,7 @@ def _get_sales_data(self, config_key, start_date, end_date):
 - All code must pass linting and type checking
 - Black formatting (88 character line length)
 - Comprehensive docstrings
+- **Refactoring Standard**: Avoid inline comments in implementation code. If a comment is needed, consider extracting the code to a well-named private method with a clear docstring instead. This is required for all new and refactored code.
 
 ### 2. Testing Requirements
 - All features must have passing tests
