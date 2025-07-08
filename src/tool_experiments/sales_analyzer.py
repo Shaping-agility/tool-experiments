@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Any
 from datetime import date
 import pandas as pd
 from .spreadsheet_manager import SpreadsheetManager
@@ -35,6 +35,20 @@ class SalesAnalyzer:
                 'column_names': ['Client', 'Category', 'Product', 'Date', 'Total', 'Description']
             }
         }
+        
+        # Cache for loaded data
+        self._cached_data: dict[str, dict[str, Any]] = {
+            'industry': {
+                'data': None,
+                'date_from': None,
+                'date_to': None
+            },
+            'government': {
+                'data': None,
+                'date_from': None,
+                'date_to': None
+            }
+        }
     
     def _validate_date_range(self, start_date: date, end_date: date):
         """Validate that the date range is valid.
@@ -65,6 +79,50 @@ class SalesAnalyzer:
         sheet_names = self.spreadsheet_manager.get_sheet_names()
         if sheet_name not in sheet_names:
             raise RuntimeError(f"Sheet '{sheet_name}' not found. Available sheets: {sheet_names}")
+    
+    def _ensureUnderlyingDataLoaded(self, config_key: str, start_date: date, end_date: date) -> pd.DataFrame:
+        """Ensure that the underlying data for the specified config is loaded and covers the requested date range.
+        
+        Args:
+            config_key: Key to identify the sheet configuration ('industry' or 'government')
+            start_date: Start date for the required range
+            end_date: End date for the required range
+            
+        Returns:
+            pandas DataFrame with the cached data (or newly loaded if needed)
+        """
+        # Validate date range first
+        self._validate_date_range(start_date, end_date)
+        
+        if config_key not in self._cached_data:
+            raise ValueError(f"Unknown config key: {config_key}. Available keys: {list(self._cached_data.keys())}")
+        
+        cache = self._cached_data[config_key]
+        
+        # Check if we have cached data that covers the requested range
+        if (cache['data'] is not None and 
+            cache['date_from'] is not None and 
+            cache['date_to'] is not None and
+            cache['date_from'] <= start_date and 
+            cache['date_to'] >= end_date):
+            # Cached data covers the requested range, filter it to the exact range requested
+            cached_data = cache['data'].copy()
+            
+            # Apply date filtering to the cached data
+            mask = (cached_data['Date'] >= pd.Timestamp(start_date)) & (cached_data['Date'] <= pd.Timestamp(end_date))
+            filtered_data = cached_data[mask].copy()
+            
+            return filtered_data
+        
+        # Need to load new data
+        new_data = self._get_sales_data(config_key, start_date, end_date)
+        
+        # Update cache
+        cache['data'] = new_data
+        cache['date_from'] = start_date
+        cache['date_to'] = end_date
+        
+        return new_data
     
     def _get_sales_data(self, config_key: str, start_date: date, end_date: date) -> pd.DataFrame:
         """Get sales data from a specified sheet configuration.
@@ -139,7 +197,7 @@ class SalesAnalyzer:
             ValueError: If date range is invalid
             RuntimeError: If sheet doesn't exist or data can't be loaded
         """
-        return self._get_sales_data('industry', start_date, end_date)
+        return self._ensureUnderlyingDataLoaded('industry', start_date, end_date)
     
     def getGovSalesData(self, start_date: date, end_date: date) -> pd.DataFrame:
         """Get government sales data from the LG-Business sheet.
@@ -155,7 +213,57 @@ class SalesAnalyzer:
             ValueError: If date range is invalid
             RuntimeError: If sheet doesn't exist or data can't be loaded
         """
-        return self._get_sales_data('government', start_date, end_date)
+        return self._ensureUnderlyingDataLoaded('government', start_date, end_date)
+    
+    def getNewIndustryClients(self, start_date: date, end_date: date) -> list[str]:
+        """Get list of unique industry clients for the specified date range.
+        
+        Args:
+            start_date: Start date for filtering (inclusive)
+            end_date: End date for filtering (inclusive)
+            
+        Returns:
+            List of unique client names as strings
+            
+        Raises:
+            ValueError: If date range is invalid
+            RuntimeError: If sheet doesn't exist or data can't be loaded
+        """
+        # Ensure underlying data is loaded (uses caching)
+        data = self._ensureUnderlyingDataLoaded('industry', start_date, end_date)
+        
+        # Get unique clients, excluding any None/NaN values
+        unique_clients = data['Client'].dropna().unique().tolist()
+        
+        # Convert to strings and filter out empty strings
+        client_list = [str(client).strip() for client in unique_clients if str(client).strip()]
+        
+        return client_list
+    
+    def getNewGovClients(self, start_date: date, end_date: date) -> list[str]:
+        """Get list of unique government clients for the specified date range.
+        
+        Args:
+            start_date: Start date for filtering (inclusive)
+            end_date: End date for filtering (inclusive)
+            
+        Returns:
+            List of unique client names as strings
+            
+        Raises:
+            ValueError: If date range is invalid
+            RuntimeError: If sheet doesn't exist or data can't be loaded
+        """
+        # Ensure underlying data is loaded (uses caching)
+        data = self._ensureUnderlyingDataLoaded('government', start_date, end_date)
+        
+        # Get unique clients, excluding any None/NaN values
+        unique_clients = data['Client'].dropna().unique().tolist()
+        
+        # Convert to strings and filter out empty strings
+        client_list = [str(client).strip() for client in unique_clients if str(client).strip()]
+        
+        return client_list
     
     def close(self):
         """Close the spreadsheet connection."""
