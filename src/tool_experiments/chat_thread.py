@@ -65,12 +65,14 @@ class ChatThread:
         return self._messages.copy()
     
     def get_participants(self) -> List[str]:
-        """Get all unique participants in the thread.
-        
-        Returns:
-            List of unique participant names
-        """
-        return list(set(msg.participant for msg in self._messages))
+        """Get all unique participants in the thread, in order of first appearance."""
+        seen = set()
+        ordered = []
+        for msg in self._messages:
+            if msg.participant not in seen:
+                seen.add(msg.participant)
+                ordered.append(msg.participant)
+        return ordered
     
     def get_thread_summary(self) -> Dict[str, Any]:
         """Get structured summary of the thread.
