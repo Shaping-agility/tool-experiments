@@ -123,14 +123,10 @@ class TestSalesAnalyzer:
         # Expected government clients for the test date range (2025-05-16 to 2025-06-15)
         expected_clients = [
             'Blue Mountains',
-            'Central West Libraries',
             'Cockburn City',
             'Darebin City',
             'Dept. of Creative Industries, Tourism, Hospitality & Sport',
-            'Fairfield City',
             'Greater Geelong',
-            'Hay Shire Council',
-            'Hobart City',
             'Joondalup City',
             'Kingston City',
             'Livingstone Shire',
@@ -187,8 +183,8 @@ class TestSalesAnalyzer:
         assert isinstance(df, pd.DataFrame)
         assert len(df) >= 0  # May be empty depending on data
         
-        # Verify we have the expected columns
-        expected_columns = ['Client', 'Category', 'Product', 'Date', 'Total', 'Description']
+        # Verify we have the expected columns (including new derived columns)
+        expected_columns = ['Client', 'Category', 'Product', 'Date', 'Total', 'Description', 'ClientStatus', 'Ongoing', 'ExistingClient', 'New']
         assert list(df.columns) == expected_columns, f"Expected columns {expected_columns}, got {list(df.columns)}"
         
         # Verify Date column is datetime
@@ -221,8 +217,8 @@ class TestSalesAnalyzer:
         assert isinstance(df, pd.DataFrame)
         assert len(df) >= 0  # May be empty depending on data
         
-        # Verify we have the expected columns
-        expected_columns = ['Client', 'Category', 'Product', 'Date', 'Total', 'Description']
+        # Verify we have the expected columns (including new derived columns)
+        expected_columns = ['Client', 'Category', 'Product', 'Date', 'Total', 'Description', 'ClientStatus', 'Ongoing', 'ExistingClient', 'New']
         assert list(df.columns) == expected_columns, f"Expected columns {expected_columns}, got {list(df.columns)}"
         
         # Verify Date column is datetime
@@ -243,7 +239,7 @@ class TestSalesAnalyzer:
             "industry",
             {
                 "client": "KU Children's Services",
-                "amount": 150000,
+                "amount": 150000.0,
                 "products": [],
                 "details": ["Statewide childcare supply and demand assessment of Victoria"]
             }
@@ -263,7 +259,7 @@ class TestSalesAnalyzer:
             "industry",
             {
                 "client": "Anytime Fitness",
-                "amount": 15000,
+                "amount": 15000.0,
                 "products": [],
                 "details": ["Detailed Hotspot Report"]
             }
@@ -273,8 +269,8 @@ class TestSalesAnalyzer:
             "government",
             {
                 "client": "Central West Libraries",
-                "amount": 500,
-                "products": ["profile.id"],
+                "amount": 0.0,
+                "products": [],
                 "details": []
             }
         )
@@ -335,15 +331,11 @@ class TestSalesAnalyzer:
 | Livingstone Shire | $15,000 | expert.id | Community Insights Report |
 | Melbourne City | $13,000 | expert.id | Affordable Housing Needs Assessment |
 | Kingston City | $10,000 | expert.id | City of Kingston Precinct Analysis |
-| Yarra Ranges Shire | $39,600 | views.id |  |
+| Yarra Ranges Shire | $28,600 | views.id |  |
 | Darebin City | $9,500 | expert.id | Population and dwelling forecasts for DCP and Open Space precincts |
 | Cockburn City | $55,350 | profile.id, atlas.id, forecast.id, economy.id |  |
-| Central West Libraries | $500 | profile.id |  |
-| Fairfield City | $1,860 | atlas.id, profile.id |  |
-| Greater Geelong | $54,545 | views.id |  |
-| Hobart City | $16,300 | economy.id |  |
+| Greater Geelong | $40,909 | views.id |  |
 | Blue Mountains | $33,870 | profile.id, atlas.id, economy.id |  |
-| Hay Shire Council | $9,450 | profile.id, economy.id |  |
 | Northern Beaches | $10,000 | expert.id | Green jobs and Business study (billed next year invoice on completion) |
 | Noosa Shire | $3,500 | expert.id | Economic Development Breakfast 29 July - Speakers Fee .id Chief Economist, Rob Hall |
 | Dept. of Creative Industries, Tourism, Hospitality & Sport | $85,000 | economy.id | Economic value output, NTE research |'''
@@ -679,4 +671,69 @@ class TestSalesAnalyzer:
             # Products and details can be empty, but should be strings
             assert isinstance(products, str)
             assert isinstance(details, str)
+
+    @pytest.mark.primary
+    @pytest.mark.parametrize("client_name,client_type,expected_existing,expected_new_counts", [
+        (
+            "Joondalup City",
+            "government",
+            True,  # ExistingClient should be True
+            {"True": 1, "False": 0}  # All rows with New=True (because Ongoing='No')
+        ),
+        (
+            "Hay Shire Council", 
+            "government",
+            True,  # ExistingClient should be True
+            {"True": 0, "False": 2}  # All rows with New=False (because Ongoing!='No')
+        ),
+        (
+            "Yarra Ranges Shire", 
+            "government",
+            True,  # ExistingClient should be True
+            {"True": 1, "False": 1}  # All rows with New=False (because Ongoing!='No')
+        ),        
+        (
+            "Anytime Fitness",
+            "industry", 
+            False,  # ExistingClient should be False (not 'Existing')
+            {"True": 1, "False": 0}  # All rows with New=True
+        )
+    ])
+    def test_derived_columns_logic(self, client_name: str, client_type: str, expected_existing: bool, expected_new_counts: dict):
+        """Primary test: Demonstrates derived columns logic with parameterized test cases."""
+        start_date = self.getTestStartDate()
+        end_date = self.getTestEndDate()
+        
+        # Get the data for the specified client type
+        if client_type == 'industry':
+            data = self.analyzer.getIndustrySalesData(start_date, end_date)
+        else:
+            data = self.analyzer.getGovSalesData(start_date, end_date)
+        
+        # Filter to the specific client
+        client_data = data[data['Client'] == client_name]
+        
+        # Validate we have data for this client
+        assert len(client_data) > 0, f"No data found for client: {client_name}"
+        
+        # Validate ExistingClient column exists and has correct value
+        assert 'ExistingClient' in client_data.columns, "ExistingClient column missing"
+        assert 'New' in client_data.columns, "New column missing"
+        
+        # All rows for this client should have the same ExistingClient value
+        existing_series = pd.Series(client_data['ExistingClient'])
+        existing_values = existing_series.unique().tolist()
+        assert len(existing_values) == 1, f"Client {client_name} has inconsistent ExistingClient values: {existing_values}"
+        assert existing_values[0] == expected_existing, f"Expected ExistingClient={expected_existing}, got {existing_values[0]}"
+        
+        # Validate New column counts
+        new_series = pd.Series(client_data['New'])
+        new_counts = new_series.value_counts().to_dict()
+        for expected_value, expected_count in expected_new_counts.items():
+            actual_count = new_counts.get(eval(expected_value), 0)
+            assert actual_count == expected_count, f"Expected {expected_count} rows with New={expected_value}, got {actual_count}"
+        
+        # Validate data types
+        assert client_data['ExistingClient'].dtype == bool, "ExistingClient should be boolean"
+        assert client_data['New'].dtype == bool, "New should be boolean"
  

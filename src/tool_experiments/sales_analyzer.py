@@ -26,13 +26,13 @@ class SalesAnalyzer:
         self._sheet_configs = {
             'industry': {
                 'sheet_name': 'LD-Business',
-                'required_columns': [0, 3, 8, 16, 25, 18],  # A, D, I, Q, Z, S (0-indexed)
-                'column_names': ['Client', 'Category', 'Product', 'Date', 'Total', 'Description']
+                'required_columns': [0, 3, 8, 16, 25, 18, 6, 7],  # A, D, I, Q, Z, S, G, H (0-indexed)
+                'column_names': ['Client', 'Category', 'Product', 'Date', 'Total', 'Description', 'ClientStatus', 'Ongoing']
             },
             'government': {
                 'sheet_name': 'LG-Business',
-                'required_columns': [0, 3, 8, 15, 24, 17],  # A, D, I, P, Y, R (0-indexed)
-                'column_names': ['Client', 'Category', 'Product', 'Date', 'Total', 'Description']
+                'required_columns': [0, 3, 8, 15, 24, 17, 6, 7],  # A, D, I, P, Y, R, G, H (0-indexed)
+                'column_names': ['Client', 'Category', 'Product', 'Date', 'Total', 'Description', 'ClientStatus', 'Ongoing']
             }
         }
         
@@ -174,12 +174,29 @@ class SalesAnalyzer:
         selected_columns['Date'] = pd.to_datetime(selected_columns['Date'], errors='coerce')
         
         # Trim whitespace from string columns
-        string_columns = ['Client', 'Category', 'Product', 'Description']
+        string_columns = ['Client', 'Category', 'Product', 'Description', 'ClientStatus', 'Ongoing']
         for col in string_columns:
             if col in selected_columns.columns:
                 selected_columns[col] = selected_columns[col].astype(str).str.strip()
         
+        # Add derived columns
+        selected_columns = self._add_derived_columns(selected_columns)
+        
         return selected_columns
+    
+    def _add_derived_columns(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Add derived boolean columns ExistingClient and New based on ClientStatus and Ongoing fields."""
+        # Handle missing values: missing ClientStatus = 'not existing', missing Ongoing = 'not no'
+        client_status = df['ClientStatus'].fillna('').astype(str)
+        ongoing = df['Ongoing'].fillna('').astype(str)
+        
+        # ExistingClient: True if ClientStatus is 'Existing' (case insensitive)
+        df['ExistingClient'] = client_status.str.lower() == 'existing'
+        
+        # New: True if not existing client, OR if existing client with Ongoing = 'No'
+        df['New'] = (~df['ExistingClient']) | (ongoing.str.lower() == 'no')
+        
+        return df
     
     def _filter_result_by_date_range(self, df: pd.DataFrame, start_date: date, end_date: date) -> pd.DataFrame:
         """Filter DataFrame by date range and reset index, always returning a DataFrame."""
@@ -197,7 +214,8 @@ class SalesAnalyzer:
             end_date: End date for filtering (inclusive)
             
         Returns:
-            pandas DataFrame with columns: Client, Category, Product, Date, Total, Description
+            pandas DataFrame with columns: Client, Category, Product, Date, Total, Description, 
+            ClientStatus, Ongoing, ExistingClient, New
             
         Raises:
             ValueError: If date range is invalid
@@ -213,7 +231,8 @@ class SalesAnalyzer:
             end_date: End date for filtering (inclusive)
             
         Returns:
-            pandas DataFrame with columns: Client, Category, Product, Date, Total, Description
+            pandas DataFrame with columns: Client, Category, Product, Date, Total, Description,
+            ClientStatus, Ongoing, ExistingClient, New
             
         Raises:
             ValueError: If date range is invalid
@@ -256,7 +275,7 @@ class SalesAnalyzer:
         return self._extract_unique_clients(data)
     
     def getClientSummary(self, client_name: str, client_type: str, start_date: date, end_date: date) -> dict:
-        """Get a summary of sales data for a specific client.
+        """Get a summary of sales data for a specific client (new business only).
         
         Args:
             client_name: Name of the client to summarize
@@ -276,12 +295,14 @@ class SalesAnalyzer:
         
         data = self._ensureUnderlyingDataLoaded(client_type, start_date, end_date)
         filtered_data = self._filter_data_by_client(data, client_name)
+        # Apply new business filter to client data
+        new_business_data = self._filter_new_business_only(filtered_data)
         
         return {
             'client': client_name,
-            'amount': self._calculate_client_total_amount(filtered_data),
-            'products': self._extract_unique_products(filtered_data),
-            'details': self._extract_unique_details(filtered_data)
+            'amount': self._calculate_client_total_amount(new_business_data),
+            'products': self._extract_unique_products(new_business_data),
+            'details': self._extract_unique_details(new_business_data)
         }
     
     def _filter_data_by_client(self, data: pd.DataFrame, client_name: str) -> pd.DataFrame:
@@ -317,9 +338,21 @@ class SalesAnalyzer:
         return cleansed
     
     def _extract_unique_clients(self, data: pd.DataFrame) -> list[str]:
-        """Extract unique, non-empty client names from the DataFrame."""
-        unique_clients = data['Client'].dropna().unique().tolist()
+        """Extract unique, non-empty client names from the DataFrame, filtering for new business only."""
+        # Filter for new business only (exclude ExistingClient=True AND New=False)
+        new_business_data = self._filter_new_business_only(data)
+        unique_clients = new_business_data['Client'].dropna().unique().tolist()
         return [str(client).strip() for client in unique_clients if str(client).strip()]
+    
+    def _filter_new_business_only(self, data: pd.DataFrame) -> pd.DataFrame:
+        """Filter DataFrame to include only new business rows (exclude ExistingClient=True AND New=False)."""
+        # Keep rows where: NOT (ExistingClient=True AND New=False)
+        # This means: (ExistingClient=False) OR (New=True)
+        mask = (~data['ExistingClient']) | (data['New'])
+        filtered = data[mask]
+        if not isinstance(filtered, pd.DataFrame):
+            filtered = filtered.to_frame().T if hasattr(filtered, 'to_frame') else pd.DataFrame([filtered])
+        return filtered.copy().reset_index(drop=True)
     
     def close(self):
         """Close the spreadsheet connection."""

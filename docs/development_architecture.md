@@ -223,6 +223,66 @@ def _filter_result_by_date_range(...):
 - More sophisticated caching strategies
 - Integration with external data sources
 
+## Development Roadmap
+
+### Phase 1: Core Infrastructure ✅
+- Core class implementations
+- Test-driven development approach
+- Performance optimization
+- Code refactoring
+- Test organization with primary/coverage separation
+- Comprehensive error handling
+- Documentation structure
+
+### Phase 2: Data Enhancement ✅
+- Added ClientStatus and Ongoing columns from Excel sheets
+- Implemented derived columns logic (ExistingClient, New)
+- Added new business filtering logic
+- Updated all tests to reflect new data structure
+- Generated new golden answers for filtered output
+
+### Phase 3: Product Standardization 🔄
+**Next Priority**: Handle 'expert.id' product reference standardization
+
+**Current Issue**: The data contains inconsistent product naming:
+- Some entries use 'expert.id'
+- Others use 'profile.id', 'atlas.id', 'economy.id', etc.
+- Need to standardize product references for consistent reporting
+
+**Proposed Solution**:
+1. **Product Mapping System**: Create a mapping dictionary to standardize product names
+2. **Normalization Method**: Add `_normalize_product_names()` method to SalesAnalyzer
+3. **Configuration-Driven**: Store product mappings in configuration for easy maintenance
+4. **Backward Compatibility**: Ensure existing functionality continues to work
+5. **Test Updates**: Update tests to reflect standardized product names
+
+**Implementation Plan**:
+```python
+# Example product mapping configuration
+PRODUCT_MAPPINGS = {
+    'expert.id': 'expert.id',
+    'profile.id': 'profile.id', 
+    'atlas.id': 'atlas.id',
+    'economy.id': 'economy.id',
+    'views.id': 'views.id',
+    'forecast.id': 'forecast.id',
+    'Forecast (SAFi)': 'forecast.id',
+    # Add more mappings as needed
+}
+```
+
+**Benefits**:
+- Consistent product reporting across all outputs
+- Easier data analysis and aggregation
+- Improved data quality for business intelligence
+- Foundation for future product categorization features
+
+### Phase 4: Future Enhancements 📋
+- Additional business logic features
+- Enhanced caching strategies
+- Performance regression testing
+- Advanced filtering and reporting capabilities
+
 ## Current Status
 
 ✅ **Completed**:
@@ -233,12 +293,15 @@ def _filter_result_by_date_range(...):
 - Test organization with primary/coverage separation
 - Comprehensive error handling
 - Documentation structure
+- New business filtering logic
+- ClientStatus and Ongoing column integration
 
 🔄 **In Progress**:
 - Performance monitoring and optimization
 - Test execution time improvements
 
 📋 **Planned**:
+- Product standardization (expert.id handling)
 - Additional business logic features
 - Enhanced caching strategies
 - Performance regression testing
