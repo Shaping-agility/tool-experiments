@@ -2,19 +2,22 @@
 
 ## Immediate Next Steps
 
-### 1. Refactor SalesLeadAnalyzer
-- Apply the refactoring philosophy established in SalesAnalyzer:
-  - Eliminate inline comments in favor of extracting code to well-named private methods.
-  - Ensure all methods (public and private) have clear, comprehensive docstrings.
-  - Make code intent self-evident through structure, not comments.
+### 1. Teams Message Processing Interface Discovery 🔄
+**Priority**: Explore .eml file contents to determine optimal ChatThread interface
 
-### 2. Refactor SpreadsheetManager
-- Apply the same refactoring approach as above to SpreadsheetManager.
+**Objective**: Work collaboratively to examine sample .eml files in data/raw folder and design the ChatThread class interface based on discovered structure.
 
-## Policy
-- No new features or major enhancements should be started until the above refactorings are complete.
-- This ensures a consistent, maintainable, and readable codebase for all future development.
+**Tasks**:
+- Analyze sample .eml files to understand Teams message structure
+- Identify key data elements (participants, timestamps, messages, attachments)
+- Design ChatThread class interface collaboratively
+- Create initial prototype implementation
+- Establish test patterns for email processing functionality
+
+**Expected Outcome**: Clear interface design for ChatThread class that can effectively model Teams message threads from email data.
 
 ## Future Steps
-- After refactoring, review and update tests as needed to match any new method boundaries or behaviors.
-- Continue to apply this philosophy to all new code and features. 
+
+- Implement ChatThread class and email processing capabilities.
+- Develop Teams message analysis and markdown rendering features.
+- Prepare for GraphAPI integration for real-time Teams data access. 

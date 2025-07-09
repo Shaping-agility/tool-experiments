@@ -335,6 +335,7 @@ class SalesAnalyzer:
             'atlas.id': 'Atlas',
             'economy.id': 'Economy',
             'forecast.id': 'Forecast',
+            'housing.id' : 'Housing',
             'Forecast (SAFi)': 'Forecast'
         }
         

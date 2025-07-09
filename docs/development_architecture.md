@@ -324,11 +324,69 @@ def getNewSalesSummary(self, client_type: str, start_date: date, end_date: date)
 - More granular analysis for strategic decision making
 - Foundation for advanced business metrics and KPIs
 
-### Phase 5: Future Enhancements 📋
+### Phase 5: Teams Message Processing & Email Analysis 📋
+**Priority**: Process email contents from Teams channel messages to extract structured information for LLM consumption
+
+**Business Context**: Employees share success messages in Teams channels, which are forwarded as email messages. Each email encapsulates one message thread. The goal is to process these and render them into structured markdown format for easy LLM information extraction.
+
+**Use Case Example**: Taking information about a new sale (e.g., Blue Mountains) and looking for corresponding Teams discussions to extract commentary and insights.
+
+**Current Issue**: Need to build capability to model message threads from emails as structured data objects for analysis and reporting.
+
+**Proposed Solution**:
+1. **ChatThread Class**: Create abstraction layer for message thread processing
+2. **Email Processing**: Parse .eml files to extract Teams message content
+3. **Structured Output**: Generate JSON objects representing message threads
+4. **Markdown Rendering**: Convert structured data to LLM-friendly markdown format
+5. **Future Integration**: Prepare for GraphAPI integration (currently using sample .eml files)
+
+**Implementation Plan**:
+```python
+# Proposed ChatThread class structure (interface to be determined)
+class ChatThread:
+    """Represents a single chat thread from Teams channel messages."""
+    
+    def __init__(self, email_file_path: Path):
+        """Initialize from .eml file."""
+        
+    def get_messages(self) -> list[Message]:
+        """Get all messages in the thread."""
+        
+    def get_participants(self) -> list[str]:
+        """Get all participants in the thread."""
+        
+    def get_thread_summary(self) -> dict:
+        """Get structured summary of the thread."""
+        
+    def to_markdown(self) -> str:
+        """Render thread as LLM-friendly markdown."""
+```
+
+**Phase 5a: Interface Discovery** 🔄
+**Next Priority**: Explore .eml file contents to determine optimal ChatThread interface
+
+**Current Issue**: Need to understand the structure and content of sample .eml files to design appropriate interface for ChatThread class.
+
+**Implementation Plan**:
+1. **File Analysis**: Examine sample .eml files in data/raw folder
+2. **Content Mapping**: Identify key data elements (participants, timestamps, messages, attachments)
+3. **Interface Design**: Work collaboratively to determine ChatThread class interface
+4. **Prototype Development**: Create initial implementation based on discovered structure
+5. **Test Development**: Establish test patterns for email processing functionality
+
+**Benefits**:
+- Foundation for Teams message analysis and reporting
+- Structured data extraction for business intelligence
+- LLM-friendly format for automated information processing
+- Integration capability with existing sales analysis system
+
+### Phase 6: Future Enhancements 📋
 - Additional business logic features
 - Enhanced caching strategies
 - Performance regression testing
 - Advanced filtering and reporting capabilities
+- GraphAPI integration for real-time Teams data
+- Advanced LLM processing and analysis features
 
 ## Current Status
 
@@ -346,12 +404,16 @@ def getNewSalesSummary(self, client_type: str, start_date: date, end_date: date)
 🔄 **In Progress**:
 - Performance monitoring and optimization
 - Test execution time improvements
+- **NEW**: Teams message processing interface discovery and design
 
 📋 **Planned**:
 - Product standardization (expert.id handling)
+- ChatThread class implementation and email processing
+- Teams message analysis and markdown rendering
 - Additional business logic features
 - Enhanced caching strategies
 - Performance regression testing
+- GraphAPI integration for Teams data
 
 ---
 
