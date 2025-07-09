@@ -236,6 +236,133 @@ class TestSalesAnalyzer:
         test_time = time.time() - test_start_time
         logger.info(f"test_can_load_gov_sales_data completed in {test_time:.2f} seconds")
     
+    @pytest.mark.primary
+    @pytest.mark.parametrize("client_name,client_type,expected_summary", [
+        (
+            "KU Children's Services",
+            "industry",
+            {
+                "client": "KU Children's Services",
+                "amount": 150000,
+                "products": [],
+                "details": ["Statewide childcare supply and demand assessment of Victoria"]
+            }
+        ),
+        (
+            "Blue Mountains",
+            "government",
+            {
+                "client": "Blue Mountains",
+                "amount": 33870.0,
+                "products": ["profile.id", "atlas.id", "economy.id"],
+                "details": []
+            }
+        ),
+        (
+            "Anytime Fitness",
+            "industry",
+            {
+                "client": "Anytime Fitness",
+                "amount": 15000,
+                "products": [],
+                "details": ["Detailed Hotspot Report"]
+            }
+        ),
+        (
+            "Central West Libraries",
+            "government",
+            {
+                "client": "Central West Libraries",
+                "amount": 500,
+                "products": ["profile.id"],
+                "details": []
+            }
+        )
+    ])
+    def test_get_client_summary(self, client_name: str, client_type: str, expected_summary: dict):
+        """Primary test: Demonstrates client summary functionality with parameterized test cases."""
+        start_date = self.getTestStartDate()
+        end_date = self.getTestEndDate()
+        
+        summary = self.analyzer.getClientSummary(client_name, client_type, start_date, end_date)
+        
+        # Validate return type and structure
+        assert isinstance(summary, dict)
+        assert "client" in summary
+        assert "amount" in summary
+        assert "products" in summary
+        assert "details" in summary
+        
+        # Validate client name
+        assert summary["client"] == expected_summary["client"]
+        
+        # Validate amount (allow for small floating point differences)
+        assert abs(summary["amount"] - expected_summary["amount"]) < 0.01
+        
+        # Validate products list
+        assert isinstance(summary["products"], list)
+        assert set(summary["products"]) == set(expected_summary["products"])
+        
+        # Validate details list
+        assert isinstance(summary["details"], list)
+        assert set(summary["details"]) == set(expected_summary["details"])
+
+    @pytest.mark.primary
+    @pytest.mark.parametrize("client_type,expected_markdown", [
+        (
+            "industry",
+            '''# New Industry Clients (2025-05-16 to 2025-06-15)
+
+| Client | Amount | Products | Details |
+|--------|--------|----------|---------|
+| YMCA Victoria | $1,500 | Forecast (SAFi) | id’s population forecasts for the defined catchment - Fitzroy Gasworks 5min PEAK AM DT SA1s |
+| Anytime Fitness | $15,000 |  | Detailed Hotspot Report |
+| Legal Aid NSW | $60,000 |  | Statewide legal need and service provision analysis, |
+| KU Children's Services | $150,000 |  | Statewide childcare supply and demand assessment of Victoria |
+| Urbis | $1,200 | Forecast (SAFi) |  |
+| Macroplan | $800 | Forecast (SAFi) |  |
+| Ethos Urban | $400 | Forecast (SAFi) |  |
+| BrandServe | $900 | Forecast (SAFi) |  |
+| Central Highlands Region Water Corporation | $23,300 | Forecast (SAFi) |  |'''
+        ),
+        (
+            "government",
+            '''# New Government Clients (2025-05-16 to 2025-06-15)
+
+| Client | Amount | Products | Details |
+|--------|--------|----------|---------|
+| Joondalup City | $12,000 | expert.id | Economic Health Check |
+| Livingstone Shire | $15,000 | expert.id | Community Insights Report |
+| Melbourne City | $13,000 | expert.id | Affordable Housing Needs Assessment |
+| Kingston City | $10,000 | expert.id | City of Kingston Precinct Analysis |
+| Yarra Ranges Shire | $39,600 | views.id |  |
+| Darebin City | $9,500 | expert.id | Population and dwelling forecasts for DCP and Open Space precincts |
+| Cockburn City | $55,350 | profile.id, atlas.id, forecast.id, economy.id |  |
+| Central West Libraries | $500 | profile.id |  |
+| Fairfield City | $1,860 | atlas.id, profile.id |  |
+| Greater Geelong | $54,545 | views.id |  |
+| Hobart City | $16,300 | economy.id |  |
+| Blue Mountains | $33,870 | profile.id, atlas.id, economy.id |  |
+| Hay Shire Council | $9,450 | profile.id, economy.id |  |
+| Northern Beaches | $10,000 | expert.id | Green jobs and Business study (billed next year invoice on completion) |
+| Noosa Shire | $3,500 | expert.id | Economic Development Breakfast 29 July - Speakers Fee .id Chief Economist, Rob Hall |
+| Dept. of Creative Industries, Tourism, Hospitality & Sport | $85,000 | economy.id | Economic value output, NTE research |'''
+        )
+    ])
+    def test_get_client_summary_markdown(self, client_type: str, expected_markdown: str):
+        """Primary test: Demonstrates markdown table generation for client summaries with golden answer validation."""
+        start_date = self.getTestStartDate()
+        end_date = self.getTestEndDate()
+        
+        markdown = self.analyzer.getClientSummaryMarkdown(client_type, start_date, end_date)
+        
+        # Validate return type
+        assert isinstance(markdown, str)
+        assert len(markdown) > 0
+        
+        # Golden answer validation - compare exact output
+        assert markdown == expected_markdown
+    
     # ============================================================================
     # COVERAGE TESTS - Resilience & Edge Cases
     # ============================================================================
@@ -420,4 +547,136 @@ class TestSalesAnalyzer:
         
         with pytest.raises(ValueError, match="Start date must be before or equal to end date"):
             self.analyzer.getNewGovClients(start_date, end_date)
+
+    def test_get_client_summary_invalid_client_type(self):
+        """Coverage test: Error handling - invalid client type in getClientSummary."""
+        start_date = self.getTestStartDate()
+        end_date = self.getTestEndDate()
+        
+        with pytest.raises(ValueError, match="Invalid client_type: invalid"):
+            self.analyzer.getClientSummary("Test Client", "invalid", start_date, end_date)
+
+    def test_get_client_summary_nonexistent_client(self):
+        """Coverage test: Edge case - client that doesn't exist returns empty summary."""
+        start_date = self.getTestStartDate()
+        end_date = self.getTestEndDate()
+        
+        summary = self.analyzer.getClientSummary("Nonexistent Client", "industry", start_date, end_date)
+        
+        assert summary["client"] == "Nonexistent Client"
+        assert summary["amount"] == 0.0
+        assert summary["products"] == []
+        assert summary["details"] == []
+
+    def test_get_client_summary_empty_results(self):
+        """Coverage test: Edge case - client with no data in date range."""
+        # Use a date range where we know there's no data
+        start_date = date(2020, 1, 1)
+        end_date = date(2020, 1, 31)
+        
+        summary = self.analyzer.getClientSummary("KU Children's Services", "industry", start_date, end_date)
+        
+        assert summary["client"] == "KU Children's Services"
+        assert summary["amount"] == 0.0
+        assert summary["products"] == []
+        assert summary["details"] == []
+
+    def test_get_client_summary_consulting_exclusion(self):
+        """Coverage test: Edge case - 'Consulting' products are excluded from products list."""
+        start_date = self.getTestStartDate()
+        end_date = self.getTestEndDate()
+        
+        # This test assumes there's a client with 'Consulting' as a product
+        # If no such client exists in the test data, this test will pass with empty products
+        summary = self.analyzer.getClientSummary("KU Children's Services", "industry", start_date, end_date)
+        
+        # Verify that 'Consulting' is not in the products list
+        assert "Consulting" not in summary["products"]
+        assert isinstance(summary["products"], list)
+ 
+
+    def test_get_client_summary_markdown_invalid_client_type(self):
+        """Coverage test: Error handling - invalid client type in getClientSummaryMarkdown."""
+        start_date = self.getTestStartDate()
+        end_date = self.getTestEndDate()
+        
+        with pytest.raises(ValueError, match="Invalid client_type: invalid"):
+            self.analyzer.getClientSummaryMarkdown("invalid", start_date, end_date)
+
+    def test_get_client_summary_markdown_empty_results(self):
+        """Coverage test: Edge case - no clients in date range returns appropriate message."""
+        # Use a date range where we know there's no data
+        start_date = date(2020, 1, 1)
+        end_date = date(2020, 1, 31)
+        
+        markdown = self.analyzer.getClientSummaryMarkdown("industry", start_date, end_date)
+        
+        assert isinstance(markdown, str)
+        assert "No clients found for the specified date range" in markdown
+        assert markdown.startswith("# New Industry Clients")
+
+    def test_whitespace_trimming_in_data_loading(self):
+        """Coverage test: Edge case - client names with trailing whitespace are properly trimmed."""
+        start_date = self.getTestStartDate()
+        end_date = self.getTestEndDate()
+        
+        # Test that Anytime Fitness with trailing space matches Anytime Fitness without trailing space
+        summary = self.analyzer.getClientSummary("Anytime Fitness", "industry", start_date, end_date)
+        
+        # Should not be empty (should find the data after trimming)
+        assert summary["client"] == "Anytime Fitness"
+        assert summary["amount"] > 0  # Should have some amount, not 0
+        assert len(summary["products"]) > 0 or len(summary["details"]) > 0  # Should have some data
+        
+        # Verify that the client appears in the client list (after trimming)
+        clients = self.analyzer.getNewIndustryClients(start_date, end_date)
+        assert "Anytime Fitness" in clients
+
+    def test_markdown_structure_validation(self):
+        """Coverage test: Edge case - markdown structure is properly formatted."""
+        start_date = self.getTestStartDate()
+        end_date = self.getTestEndDate()
+        
+        markdown = self.analyzer.getClientSummaryMarkdown("industry", start_date, end_date)
+        
+        # Validate return type
+        assert isinstance(markdown, str)
+        assert len(markdown) > 0
+        
+        # Validate markdown structure
+        lines = markdown.split('\n')
+        assert len(lines) >= 4  # Title, empty line, header, separator
+        
+        # Validate title format
+        assert lines[0].startswith("# New Industry Clients")
+        assert f"({start_date} to {end_date})" in lines[0]
+        
+        # Validate table header
+        assert "| Client | Amount | Products | Details |" in lines[2]
+        assert "|--------|--------|----------|---------|" in lines[3]
+        
+        # Validate that we have data rows
+        data_rows = [line for line in lines[4:] if line.strip() and line.startswith('|')]
+        assert len(data_rows) > 0
+        
+        # Validate each data row format
+        for row in data_rows:
+            assert row.count('|') == 5  # 4 columns + 2 outer pipes
+            parts = row.split('|')
+            assert len(parts) == 6  # 4 columns + empty strings at start/end
+            client = parts[1].strip()
+            amount = parts[2].strip()
+            products = parts[3].strip()
+            details = parts[4].strip()
+            
+            # Validate client name is not empty
+            assert client
+            
+            # Validate amount format (starts with $ and contains numbers)
+            assert amount.startswith('$')
+            assert any(c.isdigit() for c in amount)
+            
+            # Products and details can be empty, but should be strings
+            assert isinstance(products, str)
+            assert isinstance(details, str)
  

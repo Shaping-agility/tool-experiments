@@ -168,10 +168,17 @@ class SalesAnalyzer:
             )
     
     def _select_and_rename_required_columns(self, df: pd.DataFrame, required_columns: list, column_names: list) -> pd.DataFrame:
-        """Select and rename required columns, and convert Date column to datetime."""
+        """Select and rename required columns, convert Date column to datetime, and trim string fields."""
         selected_columns = df.iloc[:, required_columns].copy()
         selected_columns.columns = column_names
         selected_columns['Date'] = pd.to_datetime(selected_columns['Date'], errors='coerce')
+        
+        # Trim whitespace from string columns
+        string_columns = ['Client', 'Category', 'Product', 'Description']
+        for col in string_columns:
+            if col in selected_columns.columns:
+                selected_columns[col] = selected_columns[col].astype(str).str.strip()
+        
         return selected_columns
     
     def _filter_result_by_date_range(self, df: pd.DataFrame, start_date: date, end_date: date) -> pd.DataFrame:
@@ -248,6 +255,67 @@ class SalesAnalyzer:
         data = self._ensureUnderlyingDataLoaded('government', start_date, end_date)
         return self._extract_unique_clients(data)
     
+    def getClientSummary(self, client_name: str, client_type: str, start_date: date, end_date: date) -> dict:
+        """Get a summary of sales data for a specific client.
+        
+        Args:
+            client_name: Name of the client to summarize
+            client_type: Type of client ('industry' or 'government')
+            start_date: Start date for filtering (inclusive)
+            end_date: End date for filtering (inclusive)
+            
+        Returns:
+            Dictionary with keys: client, amount, products, details
+            
+        Raises:
+            ValueError: If date range is invalid or client_type is invalid
+            RuntimeError: If sheet doesn't exist or data can't be loaded
+        """
+        if client_type not in ['industry', 'government']:
+            raise ValueError(f"Invalid client_type: {client_type}. Must be 'industry' or 'government'")
+        
+        data = self._ensureUnderlyingDataLoaded(client_type, start_date, end_date)
+        filtered_data = self._filter_data_by_client(data, client_name)
+        
+        return {
+            'client': client_name,
+            'amount': self._calculate_client_total_amount(filtered_data),
+            'products': self._extract_unique_products(filtered_data),
+            'details': self._extract_unique_details(filtered_data)
+        }
+    
+    def _filter_data_by_client(self, data: pd.DataFrame, client_name: str) -> pd.DataFrame:
+        """Filter DataFrame to include only rows for the specified client."""
+        filtered = data[data['Client'] == client_name]
+        if not isinstance(filtered, pd.DataFrame):
+            filtered = filtered.to_frame().T if hasattr(filtered, 'to_frame') else pd.DataFrame([filtered])
+        return filtered.copy()
+    
+    def _calculate_client_total_amount(self, data: pd.DataFrame) -> float:
+        """Calculate the total amount for the client."""
+        return float(data['Total'].sum())
+    
+    def _extract_unique_products(self, data: pd.DataFrame) -> list[str]:
+        """Extract unique, non-empty products, excluding 'Consulting'."""
+        products = data['Product'].dropna().unique().tolist()
+        return [str(product).strip() for product in products 
+                if str(product).strip() and str(product).strip() != 'Consulting' 
+                and str(product).strip().lower() not in ['none', 'nan']]
+    
+    def _extract_unique_details(self, data: pd.DataFrame) -> list[str]:
+        """Extract unique, non-empty descriptions, cleansing newlines and extra spaces."""
+        details = data['Description'].dropna().unique().tolist()
+        cleansed = []
+        for detail in details:
+            if not isinstance(detail, str):
+                detail = str(detail)
+            # Remove newlines and extra spaces, then trim
+            clean = ' '.join(detail.replace('\n', ' ').replace('\r', ' ').split())
+            # Filter out empty strings and string representations of missing values
+            if clean and clean.lower() not in ['none', 'nan', '']:
+                cleansed.append(clean)
+        return cleansed
+    
     def _extract_unique_clients(self, data: pd.DataFrame) -> list[str]:
         """Extract unique, non-empty client names from the DataFrame."""
         unique_clients = data['Client'].dropna().unique().tolist()
@@ -266,3 +334,79 @@ class SalesAnalyzer:
     def __exit__(self, exc_type, exc_val, exc_tb):
         """Context manager exit."""
         self.close() 
+    
+    def getClientSummaryMarkdown(self, client_type: str, start_date: date, end_date: date) -> str:
+        """Generate a markdown table of client summaries for a given client type and date range.
+        
+        Args:
+            client_type: Type of client ('industry' or 'government')
+            start_date: Start date for filtering (inclusive)
+            end_date: End date for filtering (inclusive)
+            
+        Returns:
+            Markdown formatted string with client summary table
+            
+        Raises:
+            ValueError: If date range is invalid or client_type is invalid
+            RuntimeError: If sheet doesn't exist or data can't be loaded
+        """
+        if client_type not in ['industry', 'government']:
+            raise ValueError(f"Invalid client_type: {client_type}. Must be 'industry' or 'government'")
+        
+        clients = self._get_clients_by_type(client_type, start_date, end_date)
+        summaries = []
+        
+        for client_name in clients:
+            summary = self.getClientSummary(client_name, client_type, start_date, end_date)
+            summaries.append(summary)
+        
+        return self._format_markdown_table(client_type, start_date, end_date, summaries)
+    
+    def _get_clients_by_type(self, client_type: str, start_date: date, end_date: date) -> list[str]:
+        """Get list of clients for the specified type and date range."""
+        if client_type == 'industry':
+            return self.getNewIndustryClients(start_date, end_date)
+        else:
+            return self.getNewGovClients(start_date, end_date)
+    
+    def _format_markdown_table(self, client_type: str, start_date: date, end_date: date, summaries: list[dict]) -> str:
+        """Format client summaries as a markdown table."""
+        title = f"# New {client_type.title()} Clients ({start_date} to {end_date})"
+        
+        if not summaries:
+            return f"{title}\n\nNo clients found for the specified date range."
+        
+        # Build table header
+        table_lines = [
+            title,
+            "",
+            "| Client | Amount | Products | Details |",
+            "|--------|--------|----------|---------|"
+        ]
+        
+        # Build table rows
+        for summary in summaries:
+            client = summary['client']
+            amount = self._format_currency(summary['amount'])
+            products = self._format_products(summary['products'])
+            details = self._format_details(summary['details'])
+            
+            table_lines.append(f"| {client} | {amount} | {products} | {details} |")
+        
+        return "\n".join(table_lines)
+    
+    def _format_currency(self, amount: float) -> str:
+        """Format amount as currency with $ and commas."""
+        return f"${amount:,.0f}"
+    
+    def _format_products(self, products: list[str]) -> str:
+        """Format products as comma-separated string, empty string if no products."""
+        if not products:
+            return ""
+        return ", ".join(products)
+    
+    def _format_details(self, details: list[str]) -> str:
+        """Format details as concatenated sentences, empty string if no details."""
+        if not details:
+            return ""
+        return " ".join(details) 
