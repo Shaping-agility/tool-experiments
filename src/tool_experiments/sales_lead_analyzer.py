@@ -33,34 +33,35 @@ class SalesLeadAnalyzer:
             FileNotFoundError: If the spreadsheet file doesn't exist
             RuntimeError: If the specified sheet doesn't exist
         """
-        # Open the spreadsheet
         self.spreadsheet_manager.open()
-        
-        # Verify the 'All deals' sheet exists
+        self._validate_sheet_exists()
+        self._dataframe = self._read_sheet_as_dataframe()
+        self._add_sector_field()
+        return self._dataframe
+    
+    def _validate_sheet_exists(self):
+        """Validate that the specified sheet exists in the workbook."""
         sheet_names = self.spreadsheet_manager.get_sheet_names()
         if self._sheet_name not in sheet_names:
             raise RuntimeError(f"Sheet '{self._sheet_name}' not found. Available sheets: {sheet_names}")
-        
-        # Load the data as DataFrame
-        self._dataframe = self.spreadsheet_manager.readRangeAsDataFrame(sheet_name=self._sheet_name)
-        
-        # Add calculated Sector field based on Deal owner
-        self._add_sector_field()
-        
-        return self._dataframe
+    
+    def _read_sheet_as_dataframe(self) -> pd.DataFrame:
+        """Read the specified sheet as a DataFrame."""
+        return self.spreadsheet_manager.readRangeAsDataFrame(sheet_name=self._sheet_name)
     
     def _add_sector_field(self):
         """Add a calculated Sector field based on Deal owner."""
         if self._dataframe is None:
             return
         
-        # Define industry deal owners
-        industry_owners = ["Hamish Bignell", "Paul Tardio", "Beth Reeve", "Katie King"]
-        
-        # Create the Sector column based on Deal owner
+        industry_owners = self._get_industry_owners()
         self._dataframe['Sector'] = self._dataframe['Deal owner'].apply(
             lambda owner: "Industry" if owner in industry_owners else "Government"
         )
+    
+    def _get_industry_owners(self) -> list[str]:
+        """Get the list of deal owners classified as Industry."""
+        return ["Hamish Bignell", "Paul Tardio", "Beth Reeve", "Katie King"]
     
     def getSummaryLeads(self, sector: str, conviction: str, engagement_type: str) -> pd.DataFrame:
         """Get a filtered summary of leads based on sector, conviction, and engagement type.
@@ -76,20 +77,34 @@ class SalesLeadAnalyzer:
         Raises:
             RuntimeError: If data hasn't been loaded yet
         """
+        self._ensure_data_loaded()
+        filtered_df = self._filter_dataframe_by_criteria(sector, conviction, engagement_type)
+        return self._select_summary_columns(filtered_df)
+    
+    def _ensure_data_loaded(self):
+        """Ensure that data has been loaded before performing operations."""
         if self._dataframe is None:
             raise RuntimeError("Data not loaded. Call load_data() first.")
-        
-        # Filter the DataFrame based on the specified criteria
-        filtered_df = self._dataframe[
+    
+    def _filter_dataframe_by_criteria(self, sector: str, conviction: str, engagement_type: str) -> pd.DataFrame:
+        """Filter the DataFrame based on sector, conviction, and engagement type criteria."""
+        if self._dataframe is None:
+            raise RuntimeError("Data not loaded. Call load_data() first.")
+        filtered = self._dataframe[
             (self._dataframe['Sector'] == sector) &
             (self._dataframe['Sale Conviction'] == conviction) &
             (self._dataframe['Engagement Type'] == engagement_type)
         ]
-        
-        # Select only the specified columns
-        result_df = filtered_df[['Deal Name', 'Deal owner', 'Amount']].copy()
-        
-        return result_df
+        if not isinstance(filtered, pd.DataFrame):
+            filtered = filtered.to_frame().T if hasattr(filtered, 'to_frame') else pd.DataFrame([filtered])
+        return filtered
+    
+    def _select_summary_columns(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Select only the Deal Name, Deal owner, and Amount columns from the DataFrame."""
+        selected = df[['Deal Name', 'Deal owner', 'Amount']]
+        if not isinstance(selected, pd.DataFrame):
+            selected = selected.to_frame().T if hasattr(selected, 'to_frame') else pd.DataFrame([selected])
+        return selected.copy()
     
     def getSummaryTotal(self, sector: str, conviction: str, engagement_type: str) -> float:
         """Get the total value of leads based on sector, conviction, and engagement type.
@@ -105,16 +120,13 @@ class SalesLeadAnalyzer:
         Raises:
             RuntimeError: If data hasn't been loaded yet
         """
-        if self._dataframe is None:
-            raise RuntimeError("Data not loaded. Call load_data() first.")
-        
-        # Get the filtered DataFrame using getSummaryLeads
+        self._ensure_data_loaded()
         filtered_df = self.getSummaryLeads(sector, conviction, engagement_type)
-        
-        # Sum the Amount column
-        total = filtered_df['Amount'].sum()
-        
-        return total
+        return self._calculate_total_amount(filtered_df)
+    
+    def _calculate_total_amount(self, df: pd.DataFrame) -> float:
+        """Calculate the total sum of the Amount column."""
+        return float(df['Amount'].sum())
     
     def getSummaryText(self, sector: str, conviction: str, engagement_type: str) -> list[str]:
         """Get a text summary of leads based on sector, conviction, and engagement type.
@@ -130,27 +142,25 @@ class SalesLeadAnalyzer:
         Raises:
             RuntimeError: If data hasn't been loaded yet
         """
-        if self._dataframe is None:
-            raise RuntimeError("Data not loaded. Call load_data() first.")
-        
-        # Get the filtered DataFrame using getSummaryLeads
+        self._ensure_data_loaded()
         filtered_df = self.getSummaryLeads(sector, conviction, engagement_type)
-        
-        # Convert each row to the required string format
+        return self._convert_to_summary_texts(filtered_df)
+    
+    def _convert_to_summary_texts(self, df: pd.DataFrame) -> list[str]:
+        """Convert DataFrame rows to summary text strings in the format 'Deal name - $amountK'."""
         summary_texts = []
-        for _, row in filtered_df.iterrows():
-            deal_name = row['Deal Name']
-            amount = row['Amount']
-            
-            # Convert amount to K format with rounding
-            amount_k = round(amount / 1000)
-            formatted_amount = f"${amount_k}K"
-            
-            # Create the summary string
+        for _, row in df.iterrows():
+            deal_name = str(row['Deal Name'])
+            amount = float(row['Amount'])
+            formatted_amount = self._format_amount_as_k(amount)
             summary_text = f"{deal_name} - {formatted_amount}"
             summary_texts.append(summary_text)
-        
         return summary_texts
+    
+    def _format_amount_as_k(self, amount: float) -> str:
+        """Format amount as currency in K format (e.g., $270K)."""
+        amount_k = round(amount / 1000)
+        return f"${amount_k}K"
     
     def get_dataframe(self) -> pd.DataFrame:
         """Get the loaded DataFrame.
@@ -161,15 +171,19 @@ class SalesLeadAnalyzer:
         Raises:
             RuntimeError: If data hasn't been loaded yet
         """
+        self._ensure_data_loaded()
         if self._dataframe is None:
             raise RuntimeError("Data not loaded. Call load_data() first.")
-        
         return self._dataframe
     
     def close(self):
         """Close the spreadsheet connection."""
         if self.spreadsheet_manager.is_open:
             self.spreadsheet_manager.close()
+        self._clear_dataframe()
+    
+    def _clear_dataframe(self):
+        """Clear the loaded DataFrame."""
         if self._dataframe is not None:
             self._dataframe = None
     

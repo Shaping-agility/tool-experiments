@@ -1,5 +1,5 @@
 from pathlib import Path
-from openpyxl import load_workbook
+from openpyxl import load_workbook, Workbook
 from typing import Optional, List, Any
 import pandas as pd
 
@@ -17,21 +17,28 @@ class SpreadsheetManager:
         Returns:
             SpreadsheetManager instance with the new workbook
         """
-        from openpyxl import Workbook
-        
-        # Create a new workbook
+        workbook = cls._create_new_workbook(sheet_name)
+        cls._save_and_close_workbook(workbook, file_path)
+        return cls._create_manager_instance(file_path)
+
+    @classmethod
+    def _create_new_workbook(cls, sheet_name: str):
+        """Create a new workbook with the specified sheet name."""
         workbook = Workbook()
-        
-        # Remove the default sheet and create one with the specified name
         if workbook.active:
             workbook.remove(workbook.active)
         workbook.create_sheet(title=sheet_name)
-        
-        # Save the workbook
+        return workbook
+
+    @classmethod
+    def _save_and_close_workbook(cls, workbook, file_path: Path):
+        """Save and close the workbook."""
         workbook.save(file_path)
         workbook.close()
-        
-        # Create and return a SpreadsheetManager instance
+
+    @classmethod
+    def _create_manager_instance(cls, file_path: Path):
+        """Create and return a SpreadsheetManager instance with the new workbook."""
         manager = cls(file_path)
         manager.workbook = load_workbook(file_path)
         manager.is_open = True
@@ -45,8 +52,8 @@ class SpreadsheetManager:
 
     def open(self):
         """Open the spreadsheet file."""
-        if not self.file_path.exists():raise FileNotFoundError(f"Spreadsheet not found: {self.file_path}")
-
+        if not self.file_path.exists():
+            raise FileNotFoundError(f"Spreadsheet not found: {self.file_path}")
         self.workbook = load_workbook(self.file_path)
         self.is_open = True
 
@@ -59,23 +66,24 @@ class SpreadsheetManager:
     
     def get_sheet_names(self) -> List[str]:
         """Get list of all sheet names in the workbook."""
-        if not self.is_open:
-            raise RuntimeError("Spreadsheet must be opened first")
+        self._ensure_workbook_open()
+        if self.workbook is None:
+            raise RuntimeError("Workbook is not open")
         return self.workbook.sheetnames
     
     def read_cell(self, sheet_name: str, cell_address: str) -> Any:
         """Read value from a specific cell using A1 notation."""
-        if not self.is_open:
-            raise RuntimeError("Spreadsheet must be opened first")
-        
+        self._ensure_workbook_open()
+        if self.workbook is None:
+            raise RuntimeError("Workbook is not open")
         sheet = self.workbook[sheet_name]
         return sheet[cell_address].value
     
     def read_cell_coords(self, sheet_name: str, row: int, col: int) -> Any:
         """Read value from a specific cell using row/column coordinates."""
-        if not self.is_open:
-            raise RuntimeError("Spreadsheet must be opened first")
-        
+        self._ensure_workbook_open()
+        if self.workbook is None:
+            raise RuntimeError("Workbook is not open")
         sheet = self.workbook[sheet_name]
         return sheet.cell(row=row, column=col).value
     
@@ -90,23 +98,25 @@ class SpreadsheetManager:
         Returns:
             Row number of the next empty cell
         """
-        if not self.is_open:
-            raise RuntimeError("Spreadsheet must be opened first")
-        
+        self._ensure_workbook_open()
+        if self.workbook is None:
+            raise RuntimeError("Workbook is not open")
         sheet = self.workbook[sheet_name]
         col_letter = column.upper()
-        
-        # Find the maximum row that has data in the sheet
         max_row = sheet.max_row
-        
-        # Search from start_row to max_row
+        return self._find_empty_cell_in_range(sheet, col_letter, start_row, max_row)
+
+    def _find_empty_cell_in_range(self, sheet, col_letter: str, start_row: int, max_row: int) -> int:
+        """Find the next empty cell in the specified column range."""
         for row in range(start_row, max_row + 1):
             cell_value = sheet[f"{col_letter}{row}"].value
-            if cell_value is None or str(cell_value).strip() == "":
+            if self._is_cell_empty(cell_value):
                 return row
-        
-        # If no empty cell found, return the next row after max_row
         return max_row + 1
+
+    def _is_cell_empty(self, cell_value: Any) -> bool:
+        """Check if a cell value is considered empty."""
+        return cell_value is None or str(cell_value).strip() == ""
     
     def readRangeAsDataFrame(self, sheet_name: Optional[str] = None, 
                            start_row: Optional[int] = None, end_row: Optional[int] = None,
@@ -123,34 +133,58 @@ class SpreadsheetManager:
         Returns:
             pandas DataFrame containing the range data
         """
+        self._ensure_workbook_open()
+        if self.workbook is None:
+            raise RuntimeError("Workbook is not open")
+        sheet_name = self._get_sheet_name_or_default(sheet_name)
+        sheet = self.workbook[sheet_name]
+        
+        start_row, start_col = self._set_default_range_values(start_row, start_col)
+        end_col = self._determine_end_column(sheet, start_row, end_col)
+        end_row = self._determine_end_row(sheet, start_col, end_row)
+        
+        start_col_idx, end_col_idx = self._convert_columns_to_indices(start_col, end_col)
+        data = self._read_cell_range(sheet, start_row, end_row, start_col_idx, end_col_idx)
+        
+        return self._create_dataframe_with_headers(data)
+    
+    def _ensure_workbook_open(self):
+        """Ensure the workbook is open before performing operations."""
         if not self.is_open:
             raise RuntimeError("Spreadsheet must be opened first")
-        
-        # Use first sheet if not specified
+
+    def _get_sheet_name_or_default(self, sheet_name: Optional[str]) -> str:
+        """Get the sheet name or use the first sheet if not specified."""
         if sheet_name is None:
             if self.workbook is None:
                 raise RuntimeError("Workbook is not open")
             sheet_name = self.workbook.sheetnames[0]
-        
-        sheet = self.workbook[sheet_name]
-        
-        # Set defaults
-        start_row = start_row or 1
-        start_col = start_col or 'A'
-        
-        # Auto-detect end column if not specified
+        return sheet_name
+
+    def _set_default_range_values(self, start_row: Optional[int], start_col: Optional[str]) -> tuple[int, str]:
+        """Set default values for start row and column."""
+        return start_row or 1, start_col or 'A'
+
+    def _determine_end_column(self, sheet, start_row: int, end_col: Optional[str]) -> str:
+        """Determine the end column, auto-detecting if not specified."""
         if end_col is None:
             end_col = self._find_last_non_empty_column(sheet, start_row)
-        
-        # Auto-detect end row if not specified
+        return end_col
+
+    def _determine_end_row(self, sheet, start_col: str, end_row: Optional[int]) -> int:
+        """Determine the end row, auto-detecting if not specified."""
         if end_row is None:
             end_row = self._find_last_non_empty_row(sheet, start_col)
-        
-        # Convert column letters to column indices
+        return end_row
+
+    def _convert_columns_to_indices(self, start_col: str, end_col: str) -> tuple[int, int]:
+        """Convert column letters to column indices."""
         start_col_idx = self._column_letter_to_index(start_col)
         end_col_idx = self._column_letter_to_index(end_col)
-        
-        # Read the range
+        return start_col_idx, end_col_idx
+
+    def _read_cell_range(self, sheet, start_row: int, end_row: int, start_col_idx: int, end_col_idx: int) -> list:
+        """Read the specified cell range and return as a list of lists."""
         data = []
         for row in range(start_row, end_row + 1):
             row_data = []
@@ -158,18 +192,19 @@ class SpreadsheetManager:
                 cell_value = sheet.cell(row=row, column=col).value
                 row_data.append(cell_value)
             data.append(row_data)
-        
-        # Create DataFrame
+        return data
+
+    def _create_dataframe_with_headers(self, data: list) -> pd.DataFrame:
+        """Create a DataFrame from data and set headers if appropriate."""
         df = pd.DataFrame(data)
-        
-        # Set column headers if we have data
-        if len(data) > 0:
-            # Use first row as headers if it's not empty
-            if any(cell is not None and str(cell).strip() != "" for cell in data[0]):
-                df.columns = df.iloc[0]
-                df = df.iloc[1:].reset_index(drop=True)
-        
+        if len(data) > 0 and self._should_use_first_row_as_headers(data[0]):
+            df.columns = df.iloc[0]
+            df = df.iloc[1:].reset_index(drop=True)
         return df
+
+    def _should_use_first_row_as_headers(self, first_row: list) -> bool:
+        """Determine if the first row should be used as column headers."""
+        return any(cell is not None and str(cell).strip() != "" for cell in first_row)
     
     def write_dataframe(self, df: pd.DataFrame, sheet_name: str, start_cell: str = "A1", 
                        include_headers: bool = True) -> None:
@@ -181,30 +216,33 @@ class SpreadsheetManager:
             start_cell: Starting cell address (e.g., "A1", "B3")
             include_headers: Whether to include DataFrame column headers (default: True)
         """
-        if not self.is_open:
-            raise RuntimeError("Spreadsheet must be opened first")
-        
+        self._ensure_workbook_open()
+        if self.workbook is None:
+            raise RuntimeError("Workbook is not open")
         sheet = self.workbook[sheet_name]
-        
-        # Parse start cell to get row and column
         start_row, start_col = self._parse_cell_address(start_cell)
-        
-        # Write headers if requested
+        data_start_row = self._write_headers_if_requested(sheet, df, start_row, start_col, include_headers)
+        self._write_data_rows(sheet, df, data_start_row, start_col)
+        self._save_workbook()
+    
+    def _write_headers_if_requested(self, sheet, df: pd.DataFrame, start_row: int, start_col: int, include_headers: bool) -> int:
+        """Write headers if requested and return the starting row for data."""
         if include_headers:
             for col_idx, header in enumerate(df.columns):
                 cell_address = self._get_cell_address(start_row, start_col + col_idx)
                 sheet[cell_address] = header
-            data_start_row = start_row + 1
-        else:
-            data_start_row = start_row
-        
-        # Write data
+            return start_row + 1
+        return start_row
+
+    def _write_data_rows(self, sheet, df: pd.DataFrame, data_start_row: int, start_col: int):
+        """Write all data rows to the sheet."""
         for row_idx, row_data in enumerate(df.values):
             for col_idx, value in enumerate(row_data):
                 cell_address = self._get_cell_address(data_start_row + row_idx, start_col + col_idx)
                 sheet[cell_address] = value
-        
-        # Save the workbook to persist changes
+
+    def _save_workbook(self):
+        """Save the workbook to persist changes."""
         if self.workbook:
             self.workbook.save(self.file_path)
     
@@ -212,16 +250,19 @@ class SpreadsheetManager:
         """Parse cell address (e.g., 'A1') to row and column indices."""
         import re
         
-        # Match pattern like 'A1', 'B2', 'AA10', etc.
+        match = self._match_cell_address_pattern(cell_address)
+        col_letter = match.group(1)
+        row_num = int(match.group(2))
+        col_idx = self._column_letter_to_index(col_letter)
+        return row_num, col_idx
+
+    def _match_cell_address_pattern(self, cell_address: str):
+        """Match cell address against the expected pattern."""
+        import re
         match = re.match(r'^([A-Z]+)(\d+)$', cell_address.upper())
         if not match:
             raise ValueError(f"Invalid cell address: {cell_address}")
-        
-        col_letter = match.group(1)
-        row_num = int(match.group(2))
-        
-        col_idx = self._column_letter_to_index(col_letter)
-        return row_num, col_idx
+        return match
     
     def _get_cell_address(self, row: int, col: int) -> str:
         """Convert row and column indices to cell address."""
@@ -233,9 +274,9 @@ class SpreadsheetManager:
         max_col = sheet.max_column
         for col in range(max_col, 0, -1):
             cell_value = sheet.cell(row=row, column=col).value
-            if cell_value is not None and str(cell_value).strip() != "":
+            if not self._is_cell_empty(cell_value):
                 return self._column_index_to_letter(col)
-        return 'A'  # Default to A if no data found
+        return 'A'
     
     def _find_last_non_empty_row(self, sheet, column: str) -> int:
         """Find the last non-empty row in a given column."""
@@ -244,9 +285,9 @@ class SpreadsheetManager:
         
         for row in range(max_row, 0, -1):
             cell_value = sheet.cell(row=row, column=col_idx).value
-            if cell_value is not None and str(cell_value).strip() != "":
+            if not self._is_cell_empty(cell_value):
                 return row
-        return 1  # Default to 1 if no data found
+        return 1
     
     def _column_letter_to_index(self, column: str) -> int:
         """Convert column letter to index (A=1, B=2, etc.)."""
