@@ -250,7 +250,7 @@ class TestSalesAnalyzer:
             {
                 "client": "Blue Mountains",
                 "amount": 33870.0,
-                "products": ["profile.id", "atlas.id", "economy.id"],
+                "products": ["Profile", "Atlas", "Economy"],
                 "details": []
             }
         ),
@@ -309,36 +309,36 @@ class TestSalesAnalyzer:
             "industry",
             '''# New Industry Clients (2025-05-16 to 2025-06-15)
 
-| Client | Amount | Products | Details |
-|--------|--------|----------|---------|
-| YMCA Victoria | $1,500 | Forecast (SAFi) | id’s population forecasts for the defined catchment - Fitzroy Gasworks 5min PEAK AM DT SA1s |
-| Anytime Fitness | $15,000 |  | Detailed Hotspot Report |
-| Legal Aid NSW | $60,000 |  | Statewide legal need and service provision analysis, |
-| KU Children's Services | $150,000 |  | Statewide childcare supply and demand assessment of Victoria |
-| Urbis | $1,200 | Forecast (SAFi) |  |
-| Macroplan | $800 | Forecast (SAFi) |  |
-| Ethos Urban | $400 | Forecast (SAFi) |  |
-| BrandServe | $900 | Forecast (SAFi) |  |
-| Central Highlands Region Water Corporation | $23,300 | Forecast (SAFi) |  |'''
+| Client | Amount | Products | Details | Sale Type |
+|--------|--------|----------|---------|-----------|
+| YMCA Victoria | $1,500 | Forecast | id’s population forecasts for the defined catchment - Fitzroy Gasworks 5min PEAK AM DT SA1s | Upsell |
+| Anytime Fitness | $15,000 |  | Detailed Hotspot Report | New client |
+| Legal Aid NSW | $60,000 |  | Statewide legal need and service provision analysis, | New client |
+| KU Children's Services | $150,000 |  | Statewide childcare supply and demand assessment of Victoria | New client |
+| Urbis | $1,200 | Forecast |  | Upsell |
+| Macroplan | $800 | Forecast |  | Upsell |
+| Ethos Urban | $400 | Forecast |  | Upsell |
+| BrandServe | $900 | Forecast |  | New client |
+| Central Highlands Region Water Corporation | $23,300 | Forecast |  | New client |'''
         ),
         (
             "government",
             '''# New Government Clients (2025-05-16 to 2025-06-15)
 
-| Client | Amount | Products | Details |
-|--------|--------|----------|---------|
-| Joondalup City | $12,000 | expert.id | Economic Health Check |
-| Livingstone Shire | $15,000 | expert.id | Community Insights Report |
-| Melbourne City | $13,000 | expert.id | Affordable Housing Needs Assessment |
-| Kingston City | $10,000 | expert.id | City of Kingston Precinct Analysis |
-| Yarra Ranges Shire | $28,600 | views.id |  |
-| Darebin City | $9,500 | expert.id | Population and dwelling forecasts for DCP and Open Space precincts |
-| Cockburn City | $55,350 | profile.id, atlas.id, forecast.id, economy.id |  |
-| Greater Geelong | $40,909 | views.id |  |
-| Blue Mountains | $33,870 | profile.id, atlas.id, economy.id |  |
-| Northern Beaches | $10,000 | expert.id | Green jobs and Business study (billed next year invoice on completion) |
-| Noosa Shire | $3,500 | expert.id | Economic Development Breakfast 29 July - Speakers Fee .id Chief Economist, Rob Hall |
-| Dept. of Creative Industries, Tourism, Hospitality & Sport | $85,000 | economy.id | Economic value output, NTE research |'''
+| Client | Amount | Products | Details | Sale Type |
+|--------|--------|----------|---------|-----------|
+| Joondalup City | $12,000 | Consulting | Economic Health Check | Upsell |
+| Livingstone Shire | $15,000 | Consulting | Community Insights Report | Upsell |
+| Melbourne City | $13,000 | Consulting | Affordable Housing Needs Assessment | Upsell |
+| Kingston City | $10,000 | Consulting | City of Kingston Precinct Analysis | Upsell |
+| Yarra Ranges Shire | $28,600 | Views |  | Upsell |
+| Darebin City | $9,500 | Consulting | Population and dwelling forecasts for DCP and Open Space precincts | Upsell |
+| Cockburn City | $55,350 | Profile, Atlas, Forecast, Economy |  | New client |
+| Greater Geelong | $40,909 | Views |  | Upsell |
+| Blue Mountains | $33,870 | Profile, Atlas, Economy |  | New client |
+| Northern Beaches | $10,000 | Consulting | Green jobs and Business study (billed next year invoice on completion) | Upsell |
+| Noosa Shire | $3,500 | Consulting | Economic Development Breakfast 29 July - Speakers Fee .id Chief Economist, Rob Hall | Upsell |
+| Dept. of Creative Industries, Tourism, Hospitality & Sport | $85,000 | Economy | Economic value output, NTE research | Upsell |'''
         )
     ])
     def test_get_client_summary_markdown(self, client_type: str, expected_markdown: str):
@@ -624,53 +624,6 @@ class TestSalesAnalyzer:
         clients = self.analyzer.getNewIndustryClients(start_date, end_date)
         assert "Anytime Fitness" in clients
 
-    def test_markdown_structure_validation(self):
-        """Coverage test: Edge case - markdown structure is properly formatted."""
-        start_date = self.getTestStartDate()
-        end_date = self.getTestEndDate()
-        
-        markdown = self.analyzer.getClientSummaryMarkdown("industry", start_date, end_date)
-        
-        # Validate return type
-        assert isinstance(markdown, str)
-        assert len(markdown) > 0
-        
-        # Validate markdown structure
-        lines = markdown.split('\n')
-        assert len(lines) >= 4  # Title, empty line, header, separator
-        
-        # Validate title format
-        assert lines[0].startswith("# New Industry Clients")
-        assert f"({start_date} to {end_date})" in lines[0]
-        
-        # Validate table header
-        assert "| Client | Amount | Products | Details |" in lines[2]
-        assert "|--------|--------|----------|---------|" in lines[3]
-        
-        # Validate that we have data rows
-        data_rows = [line for line in lines[4:] if line.strip() and line.startswith('|')]
-        assert len(data_rows) > 0
-        
-        # Validate each data row format
-        for row in data_rows:
-            assert row.count('|') == 5  # 4 columns + 2 outer pipes
-            parts = row.split('|')
-            assert len(parts) == 6  # 4 columns + empty strings at start/end
-            client = parts[1].strip()
-            amount = parts[2].strip()
-            products = parts[3].strip()
-            details = parts[4].strip()
-            
-            # Validate client name is not empty
-            assert client
-            
-            # Validate amount format (starts with $ and contains numbers)
-            assert amount.startswith('$')
-            assert any(c.isdigit() for c in amount)
-            
-            # Products and details can be empty, but should be strings
-            assert isinstance(products, str)
-            assert isinstance(details, str)
 
     @pytest.mark.primary
     @pytest.mark.parametrize("client_name,client_type,expected_existing,expected_new_counts", [

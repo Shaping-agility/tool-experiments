@@ -284,7 +284,7 @@ class SalesAnalyzer:
             end_date: End date for filtering (inclusive)
             
         Returns:
-            Dictionary with keys: client, amount, products, details
+            Dictionary with keys: client, amount, products, details, sale_type
             
         Raises:
             ValueError: If date range is invalid or client_type is invalid
@@ -298,11 +298,15 @@ class SalesAnalyzer:
         # Apply new business filter to client data
         new_business_data = self._filter_new_business_only(filtered_data)
         
+        # Determine sale type based on original client data (before new business filtering)
+        sale_type = self._determine_sale_type_from_data(filtered_data)
+        
         return {
             'client': client_name,
             'amount': self._calculate_client_total_amount(new_business_data),
             'products': self._extract_unique_products(new_business_data),
-            'details': self._extract_unique_details(new_business_data)
+            'details': self._extract_unique_details(new_business_data),
+            'sale_type': sale_type
         }
     
     def _filter_data_by_client(self, data: pd.DataFrame, client_name: str) -> pd.DataFrame:
@@ -317,11 +321,29 @@ class SalesAnalyzer:
         return float(data['Total'].sum())
     
     def _extract_unique_products(self, data: pd.DataFrame) -> list[str]:
-        """Extract unique, non-empty products, excluding 'Consulting'."""
+        """Extract unique, non-empty products, excluding 'Consulting' and applying product name translations."""
         products = data['Product'].dropna().unique().tolist()
-        return [str(product).strip() for product in products 
-                if str(product).strip() and str(product).strip() != 'Consulting' 
-                and str(product).strip().lower() not in ['none', 'nan']]
+        raw_products = [str(product).strip() for product in products 
+                       if str(product).strip() and str(product).strip() != 'Consulting' 
+                       and str(product).strip().lower() not in ['none', 'nan']]
+        
+        # Apply product name translations
+        product_mappings = {
+            'expert.id': 'Consulting',
+            'views.id': 'Views', 
+            'profile.id': 'Profile',
+            'atlas.id': 'Atlas',
+            'economy.id': 'Economy',
+            'forecast.id': 'Forecast',
+            'Forecast (SAFi)': 'Forecast'
+        }
+        
+        translated_products = []
+        for product in raw_products:
+            translated_product = product_mappings.get(product, product)
+            translated_products.append(translated_product)
+        
+        return translated_products
     
     def _extract_unique_details(self, data: pd.DataFrame) -> list[str]:
         """Extract unique, non-empty descriptions, cleansing newlines and extra spaces."""
@@ -336,6 +358,25 @@ class SalesAnalyzer:
             if clean and clean.lower() not in ['none', 'nan', '']:
                 cleansed.append(clean)
         return cleansed
+    
+    def _determine_sale_type_from_data(self, data: pd.DataFrame) -> str:
+        """Determine sale type based on ExistingClient column.
+        
+        Args:
+            data: DataFrame containing client data with ExistingClient column
+            
+        Returns:
+            'New client' if ExistingClient is False, 'Upsell' if True
+        """
+        if data.empty:
+            return 'New client'  # Default for empty data
+        
+        # Check if any row has ExistingClient=True
+        existing_client_count = data['ExistingClient'].sum()
+        if existing_client_count > 0:
+            return 'Upsell'
+        else:
+            return 'New client'
     
     def _extract_unique_clients(self, data: pd.DataFrame) -> list[str]:
         """Extract unique, non-empty client names from the DataFrame, filtering for new business only."""
@@ -413,8 +454,8 @@ class SalesAnalyzer:
         table_lines = [
             title,
             "",
-            "| Client | Amount | Products | Details |",
-            "|--------|--------|----------|---------|"
+            "| Client | Amount | Products | Details | Sale Type |",
+            "|--------|--------|----------|---------|-----------|"
         ]
         
         # Build table rows
@@ -423,8 +464,9 @@ class SalesAnalyzer:
             amount = self._format_currency(summary['amount'])
             products = self._format_products(summary['products'])
             details = self._format_details(summary['details'])
+            sale_type = summary['sale_type']
             
-            table_lines.append(f"| {client} | {amount} | {products} | {details} |")
+            table_lines.append(f"| {client} | {amount} | {products} | {details} | {sale_type} |")
         
         return "\n".join(table_lines)
     

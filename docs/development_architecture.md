@@ -277,7 +277,54 @@ PRODUCT_MAPPINGS = {
 - Improved data quality for business intelligence
 - Foundation for future product categorization features
 
-### Phase 4: Future Enhancements 📋
+### Phase 4: Renewal vs New Sales Analysis 📋
+**Priority**: Distinguish between renewals and straight new sales in summaries
+
+**Current Issue**: The current summary logic treats all business equally, but there's a business need to distinguish between:
+- **Renewals**: Existing clients with ongoing business (ExistingClient=True, Ongoing='Yes')
+- **Straight New Sales**: Truly new business (ExistingClient=False OR Ongoing='No')
+
+**Proposed Solution**:
+1. **Enhanced Summary Methods**: Add renewal/new sales flags to client summaries
+2. **Separate Reporting**: Create distinct summary methods for renewals vs new sales
+3. **Business Intelligence**: Provide insights into renewal rates and new business acquisition
+4. **Configuration Options**: Allow filtering by business type in summary methods
+
+**Implementation Plan**:
+```python
+# Enhanced client summary with business type classification
+def getClientSummaryWithType(self, client_name: str, client_type: str, start_date: date, end_date: date) -> dict:
+    """Get client summary with business type classification."""
+    summary = self.getClientSummary(client_name, client_type, start_date, end_date)
+    
+    # Determine business type based on derived columns
+    data = self._ensureUnderlyingDataLoaded(client_type, start_date, end_date)
+    client_data = self._filter_data_by_client(data, client_name)
+    
+    # Classify business type
+    if client_data['ExistingClient'].any() and not (client_data['Ongoing'].str.lower() == 'no').any():
+        business_type = 'renewal'
+    else:
+        business_type = 'new_sale'
+    
+    summary['business_type'] = business_type
+    return summary
+
+# Separate summary methods for different business types
+def getRenewalSummary(self, client_type: str, start_date: date, end_date: date) -> str:
+    """Generate markdown summary of renewal business only."""
+    
+def getNewSalesSummary(self, client_type: str, start_date: date, end_date: date) -> str:
+    """Generate markdown summary of new sales only."""
+```
+
+**Benefits**:
+- Better business intelligence and reporting
+- Ability to track renewal rates vs new business acquisition
+- More granular analysis for strategic decision making
+- Foundation for advanced business metrics and KPIs
+
+### Phase 5: Future Enhancements 📋
 - Additional business logic features
 - Enhanced caching strategies
 - Performance regression testing
