@@ -2,10 +2,11 @@
 
 ## Project Overview
 
-This project implements a Python-based Excel spreadsheet analysis system with three main classes:
+This project implements a Python-based business intelligence system with four main components:
 - `SpreadsheetManager`: Core Excel file operations
 - `SalesLeadAnalyzer`: Sales leads analysis from "Leads.xlsx"
 - `SalesAnalyzer`: Confirmed sales analysis from "Business.xlsm"
+- `ChatThread` & `EmailChatThreadLoader`: Teams message processing from .eml files
 
 ## Current Architecture
 
@@ -53,6 +54,30 @@ This project implements a Python-based Excel spreadsheet analysis system with th
 - Initial load: ~11.5 seconds, subsequent accesses: near-instant
 
 **File**: `src/tool_experiments/sales_analyzer.py`
+
+#### 4. ChatThread & Message Classes
+**Purpose**: Model Teams conversation threads from email data
+**Key Features**:
+- `ChatThread`: Represents a single Teams conversation thread
+- `Message`: Represents individual messages within threads
+- Metadata storage: subject, date, thread_topic, message_id
+- Participant tracking with order preservation
+- Attachment metadata management
+- LLM-friendly markdown rendering
+
+**File**: `src/tool_experiments/chat_thread.py`
+
+#### 5. EmailChatThreadLoader
+**Purpose**: Parse .eml files and populate ChatThread objects
+**Key Features**:
+- Robust .eml file parsing with error handling
+- Teams content detection and extraction
+- Message parsing with participant, timestamp, and content
+- Attachment reference extraction
+- Batch loading with `load_threadList()` method
+- Empty message filtering and content cleaning
+
+**File**: `src/tool_experiments/chat_thread_loader.py`
 
 ## Development Approach
 
@@ -160,6 +185,15 @@ def _filter_result_by_date_range(...):
 **Key Columns**:
 - Client, Category, Product, Date, Total, Description
 
+### 3. Teams Message Data (.eml files)
+**Source**: Email forwards from Teams channel messages
+**Structure**: Individual .eml files containing Teams conversation threads
+**Key Elements**:
+- Email headers (subject, date, thread_topic, message_id)
+- Teams message content with participants and timestamps
+- Attachment references and metadata
+- LLM-friendly markdown rendering
+
 ## Error Handling Strategy
 
 ### 1. File System Errors
@@ -170,6 +204,7 @@ def _filter_result_by_date_range(...):
 - Date range validation (start ≤ end)
 - Sheet existence validation
 - Column structure validation
+- Teams content detection in .eml files
 
 ### 3. State Management
 - RuntimeError for operations before data loading
@@ -188,6 +223,7 @@ def _filter_result_by_date_range(...):
 - Primary tests demonstrate core functionality
 - Coverage tests validate edge cases and error handling
 - Performance considerations for large file operations
+- Golden example tests for markdown output validation
 
 ### 3. Documentation
 - Living documentation through test structure
@@ -200,11 +236,44 @@ def _filter_result_by_date_range(...):
 - **Leads.xlsx**: Fast (< 1 second)
 - **Business.xlsm**: Slow initial load (~11.5 seconds)
 - **Cached access**: Near-instant
+- **.eml files**: Fast individual processing, batch loading supported
 
 ### Test Execution Times
 - **Primary tests only**: ~7 seconds
 - **All tests**: ~23 seconds
 - **Before optimization**: ~244 seconds
+
+## Current Status
+
+✅ **Completed**:
+- Core class implementations (SpreadsheetManager, SalesLeadAnalyzer, SalesAnalyzer)
+- Test-driven development approach
+- Performance optimization
+- Code refactoring
+- Test organization with primary/coverage separation
+- Comprehensive error handling
+- Documentation structure
+- New business filtering logic
+- ClientStatus and Ongoing column integration
+- **ChatThread and Message classes with comprehensive test coverage**
+- **EmailChatThreadLoader with robust .eml parsing**
+- **Markdown rendering for LLM-friendly output**
+- **Batch processing of multiple .eml files**
+- **Golden example tests for output validation**
+
+🎯 **Current Focus**:
+- **Business Intelligence Report Generation**: Combining processed Teams data with sales analysis
+- **Real Test Case Development**: Creating scenarios using actual business data
+- **Prompt Engineering**: Developing prompts for actionable business reports
+- **Data Integration**: Merging chat threads with existing sales data
+
+📋 **Planned**:
+- GraphAPI integration for real-time Teams data access
+- Advanced analytics and trend analysis
+- Automated report scheduling and delivery
+- Performance optimization for large datasets
+- User interface for report generation
+- Security and access control implementation
 
 ## Future Considerations
 
@@ -222,200 +291,9 @@ def _filter_result_by_date_range(...):
 - Additional business logic for sector classification
 - More sophisticated caching strategies
 - Integration with external data sources
-
-## Development Roadmap
-
-### Phase 1: Core Infrastructure ✅
-- Core class implementations
-- Test-driven development approach
-- Performance optimization
-- Code refactoring
-- Test organization with primary/coverage separation
-- Comprehensive error handling
-- Documentation structure
-
-### Phase 2: Data Enhancement ✅
-- Added ClientStatus and Ongoing columns from Excel sheets
-- Implemented derived columns logic (ExistingClient, New)
-- Added new business filtering logic
-- Updated all tests to reflect new data structure
-- Generated new golden answers for filtered output
-
-### Phase 3: Product Standardization 🔄
-**Next Priority**: Handle 'expert.id' product reference standardization
-
-**Current Issue**: The data contains inconsistent product naming:
-- Some entries use 'expert.id'
-- Others use 'profile.id', 'atlas.id', 'economy.id', etc.
-- Need to standardize product references for consistent reporting
-
-**Proposed Solution**:
-1. **Product Mapping System**: Create a mapping dictionary to standardize product names
-2. **Normalization Method**: Add `_normalize_product_names()` method to SalesAnalyzer
-3. **Configuration-Driven**: Store product mappings in configuration for easy maintenance
-4. **Backward Compatibility**: Ensure existing functionality continues to work
-5. **Test Updates**: Update tests to reflect standardized product names
-
-**Implementation Plan**:
-```python
-# Example product mapping configuration
-PRODUCT_MAPPINGS = {
-    'expert.id': 'expert.id',
-    'profile.id': 'profile.id', 
-    'atlas.id': 'atlas.id',
-    'economy.id': 'economy.id',
-    'views.id': 'views.id',
-    'forecast.id': 'forecast.id',
-    'Forecast (SAFi)': 'forecast.id',
-    # Add more mappings as needed
-}
-```
-
-**Benefits**:
-- Consistent product reporting across all outputs
-- Easier data analysis and aggregation
-- Improved data quality for business intelligence
-- Foundation for future product categorization features
-
-### Phase 4: Renewal vs New Sales Analysis 📋
-**Priority**: Distinguish between renewals and straight new sales in summaries
-
-**Current Issue**: The current summary logic treats all business equally, but there's a business need to distinguish between:
-- **Renewals**: Existing clients with ongoing business (ExistingClient=True, Ongoing='Yes')
-- **Straight New Sales**: Truly new business (ExistingClient=False OR Ongoing='No')
-
-**Proposed Solution**:
-1. **Enhanced Summary Methods**: Add renewal/new sales flags to client summaries
-2. **Separate Reporting**: Create distinct summary methods for renewals vs new sales
-3. **Business Intelligence**: Provide insights into renewal rates and new business acquisition
-4. **Configuration Options**: Allow filtering by business type in summary methods
-
-**Implementation Plan**:
-```python
-# Enhanced client summary with business type classification
-def getClientSummaryWithType(self, client_name: str, client_type: str, start_date: date, end_date: date) -> dict:
-    """Get client summary with business type classification."""
-    summary = self.getClientSummary(client_name, client_type, start_date, end_date)
-    
-    # Determine business type based on derived columns
-    data = self._ensureUnderlyingDataLoaded(client_type, start_date, end_date)
-    client_data = self._filter_data_by_client(data, client_name)
-    
-    # Classify business type
-    if client_data['ExistingClient'].any() and not (client_data['Ongoing'].str.lower() == 'no').any():
-        business_type = 'renewal'
-    else:
-        business_type = 'new_sale'
-    
-    summary['business_type'] = business_type
-    return summary
-
-# Separate summary methods for different business types
-def getRenewalSummary(self, client_type: str, start_date: date, end_date: date) -> str:
-    """Generate markdown summary of renewal business only."""
-    
-def getNewSalesSummary(self, client_type: str, start_date: date, end_date: date) -> str:
-    """Generate markdown summary of new sales only."""
-```
-
-**Benefits**:
-- Better business intelligence and reporting
-- Ability to track renewal rates vs new business acquisition
-- More granular analysis for strategic decision making
-- Foundation for advanced business metrics and KPIs
-
-### Phase 5: Teams Message Processing & Email Analysis 📋
-**Priority**: Process email contents from Teams channel messages to extract structured information for LLM consumption
-
-**Business Context**: Employees share success messages in Teams channels, which are forwarded as email messages. Each email encapsulates one message thread. The goal is to process these and render them into structured markdown format for easy LLM information extraction.
-
-**Use Case Example**: Taking information about a new sale (e.g., Blue Mountains) and looking for corresponding Teams discussions to extract commentary and insights.
-
-**Current Issue**: Need to build capability to model message threads from emails as structured data objects for analysis and reporting.
-
-**Proposed Solution**:
-1. **ChatThread Class**: Create abstraction layer for message thread processing
-2. **Email Processing**: Parse .eml files to extract Teams message content
-3. **Structured Output**: Generate JSON objects representing message threads
-4. **Markdown Rendering**: Convert structured data to LLM-friendly markdown format
-5. **Future Integration**: Prepare for GraphAPI integration (currently using sample .eml files)
-
-**Implementation Plan**:
-```python
-# Proposed ChatThread class structure (interface to be determined)
-class ChatThread:
-    """Represents a single chat thread from Teams channel messages."""
-    
-    def __init__(self, email_file_path: Path):
-        """Initialize from .eml file."""
-        
-    def get_messages(self) -> list[Message]:
-        """Get all messages in the thread."""
-        
-    def get_participants(self) -> list[str]:
-        """Get all participants in the thread."""
-        
-    def get_thread_summary(self) -> dict:
-        """Get structured summary of the thread."""
-        
-    def to_markdown(self) -> str:
-        """Render thread as LLM-friendly markdown."""
-```
-
-**Phase 5a: Interface Discovery** 🔄
-**Next Priority**: Explore .eml file contents to determine optimal ChatThread interface
-
-**Current Issue**: Need to understand the structure and content of sample .eml files to design appropriate interface for ChatThread class.
-
-**Implementation Plan**:
-1. **File Analysis**: Examine sample .eml files in data/raw folder
-2. **Content Mapping**: Identify key data elements (participants, timestamps, messages, attachments)
-3. **Interface Design**: Work collaboratively to determine ChatThread class interface
-4. **Prototype Development**: Create initial implementation based on discovered structure
-5. **Test Development**: Establish test patterns for email processing functionality
-
-**Benefits**:
-- Foundation for Teams message analysis and reporting
-- Structured data extraction for business intelligence
-- LLM-friendly format for automated information processing
-- Integration capability with existing sales analysis system
-
-### Phase 6: Future Enhancements 📋
-- Additional business logic features
-- Enhanced caching strategies
-- Performance regression testing
-- Advanced filtering and reporting capabilities
-- GraphAPI integration for real-time Teams data
 - Advanced LLM processing and analysis features
-
-## Current Status
-
-✅ **Completed**:
-- Core class implementations
-- Test-driven development approach
-- Performance optimization
-- Code refactoring
-- Test organization with primary/coverage separation
-- Comprehensive error handling
-- Documentation structure
-- New business filtering logic
-- ClientStatus and Ongoing column integration
-
-🔄 **In Progress**:
-- Performance monitoring and optimization
-- Test execution time improvements
-- **NEW**: Teams message processing interface discovery and design
-
-📋 **Planned**:
-- Product standardization (expert.id handling)
-- ChatThread class implementation and email processing
-- Teams message analysis and markdown rendering
-- Additional business logic features
-- Enhanced caching strategies
-- Performance regression testing
-- GraphAPI integration for Teams data
 
 ---
 
 *Last Updated: December 2024*
-*Project: Tool Experiments - Excel Analysis System* 
+*Project: Tool Experiments - Business Intelligence System* 
