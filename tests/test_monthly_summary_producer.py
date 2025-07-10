@@ -26,18 +26,22 @@ class TestMonthlySummaryProducer:
     # ============================================================================
     
     @pytest.mark.primary
-    def test_generate_may_2025_summaries(self):
-        """Primary test: Generate monthly summaries for May 2025."""
-        print("Starting May 2025 summary generation test...")
+    @pytest.mark.parametrize("month,year,expected_month_name", [
+        (5, 2025, "May"),
+        (6, 2025, "Jun"),
+    ])
+    def test_generate_monthly_summaries(self, month, year, expected_month_name):
+        """Primary test: Generate monthly summaries for specified month and year."""
+        print(f"Starting {expected_month_name} {year} summary generation test...")
         
-        # Generate summaries for May 2025
-        self.producer.generate(month=5, year=2025)
+        # Generate summaries for specified month and year
+        self.producer.generate(month=month, year=year)
         
         # Verify all three files were created
         expected_files = [
-            "Sales Summary May 2025.md",
-            "Sales Lead Summary May 2025.md",
-            "Chat Threads May 2025.md"
+            f"Sales Summary {expected_month_name} {year}.md",
+            f"Sales Lead Summary {expected_month_name} {year}.md",
+            f"Chat Threads {expected_month_name} {year}.md"
         ]
         
         for filename in expected_files:
@@ -54,16 +58,22 @@ class TestMonthlySummaryProducer:
                 assert "# Sales Summary" in content
                 assert "## Industry Sales" in content
                 assert "## Government Sales" in content
-                assert "**Period:** 2025-05-01 to 2025-05-31" in content
+                # Verify period matches the month/year
+                expected_start_date = f"{year:04d}-{month:02d}-01"
+                expected_end_date = f"{year:04d}-{month:02d}-31" if month in [1, 3, 5, 7, 8, 10, 12] else f"{year:04d}-{month:02d}-30" if month in [4, 6, 9, 11] else f"{year:04d}-{month:02d}-29" if year % 4 == 0 and (year % 100 != 0 or year % 400 == 0) else f"{year:04d}-{month:02d}-28"
+                assert f"**Period:** {expected_start_date} to {expected_end_date}" in content
             elif "Sales Lead Summary" in filename:
                 assert "# Sales Lead Summary" in content
                 assert "## Industry" in content
                 assert "## Government" in content
             elif "Chat Threads" in filename:
                 assert "# Chat Threads Summary" in content
-                assert "**Period:** 2025-05-01 to 2025-05-31" in content
+                # Verify period matches the month/year
+                expected_start_date = f"{year:04d}-{month:02d}-01"
+                expected_end_date = f"{year:04d}-{month:02d}-31" if month in [1, 3, 5, 7, 8, 10, 12] else f"{year:04d}-{month:02d}-30" if month in [4, 6, 9, 11] else f"{year:04d}-{month:02d}-29" if year % 4 == 0 and (year % 100 != 0 or year % 400 == 0) else f"{year:04d}-{month:02d}-28"
+                assert f"**Period:** {expected_start_date} to {expected_end_date}" in content
         
-        print("✓ All three summary files generated successfully for May 2025")
+        print(f"✓ All three summary files generated successfully for {expected_month_name} {year}")
     
     @pytest.mark.primary
     def test_generate_with_default_year(self):
@@ -175,8 +185,10 @@ class TestMonthlySummaryProducer:
         
         content = self.producer._generate_chat_threads_summary(future_start, future_end)
         
-        assert "No chat threads found for this period" in content
+        # Since we no longer filter by date, this will either show all threads or "No chat threads found"
+        # depending on whether there are any .eml files in the raw directory
         assert "**Period:** 2030-01-01 to 2030-01-31" in content
+        assert "date filtering disabled due to unreliable email dates" in content
     
     def test_sales_lead_analyzer_integration(self):
         """Coverage test: SalesLeadAnalyzer integration with new markdown method."""
@@ -191,13 +203,15 @@ class TestMonthlySummaryProducer:
         assert "# Sales Lead Summary" in markdown
         assert "## Industry" in markdown
         assert "## Government" in markdown
-        assert "### High Conviction" in markdown
-        assert "### Medium Conviction" in markdown
+        
+        # Verify conviction levels are included (new format combines sector, conviction, and engagement type)
+        assert "High conviction" in markdown
+        assert "Medium conviction" in markdown
         
         # Verify engagement types are included
         engagement_types = ["Product", "Consulting", "Product & Consulting"]
         for engagement_type in engagement_types:
-            assert f"#### {engagement_type}" in markdown
+            assert engagement_type in markdown
         
         analyzer.close()
     

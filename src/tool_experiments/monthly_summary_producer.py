@@ -145,31 +145,25 @@ class MonthlySummaryProducer:
         """Generate chat threads summary markdown using existing ChatThread methods.
         
         Args:
-            start_date: Start date for filtering
-            end_date: End date for filtering
+            start_date: Start date for filtering (not used - included for compatibility)
+            end_date: End date for filtering (not used - included for compatibility)
             
         Returns:
             Markdown formatted string with chat threads summary
         """
         loader = EmailChatThreadLoader()
         
-        # Load all threads
+        # Load all threads (no date filtering)
         threads = loader.load_threadList(str(self.raw_dir / "*.eml"))
         
-        # Filter threads by date metadata
-        qualifying_threads = []
-        for thread in threads:
-            thread_date = self._parse_thread_date(thread.get_metadata()['date'])
-            if thread_date and start_date <= thread_date <= end_date:
-                qualifying_threads.append(thread)
+        if not threads:
+            return f"# Chat Threads Summary\n\n**Period:** {start_date} to {end_date}\n\nNo chat threads found."
         
-        if not qualifying_threads:
-            return f"# Chat Threads Summary\n\n**Period:** {start_date} to {end_date}\n\nNo chat threads found for this period."
-        
-        # Generate markdown for qualifying threads
+        # Generate markdown for all threads
         markdown_lines = [f"# Chat Threads Summary\n\n**Period:** {start_date} to {end_date}\n\n"]
+        markdown_lines.append("**Note:** All available chat threads are included (date filtering disabled due to unreliable email dates)\n\n")
         
-        for i, thread in enumerate(qualifying_threads):
+        for i, thread in enumerate(threads):
             if i > 0:
                 markdown_lines.append("\n\n---\n\n")
             markdown_lines.append(thread.to_markdown())

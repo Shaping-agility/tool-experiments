@@ -240,19 +240,23 @@ class SalesLeadAnalyzer:
                             # markdown_lines.append(f"**Total:** ${total:,.0f}\n")
                             # markdown_lines.append("**Leads:**\n")
                             
-                            for _, row in leads_df.iterrows():
-                                markdown_lines.append(f"{self.getSummaryText(sector, conviction, engagement_type)}\n")
-                                #deal_name = str(row['Deal Name'])
-                                #amount = float(row['Amount'])
-                                #formatted_amount = self._format_amount_as_k(amount)
-                                #markdown_lines.append(f"- {deal_name} - {formatted_amount}")
+                            # Get summary texts and add them as bullet points
+                            summary_texts = self.getSummaryText(sector, conviction, engagement_type)
+                            for text in summary_texts:
+                                markdown_lines.append(f"- {text}")
+                            
+                            #deal_name = str(row['Deal Name'])
+                            #amount = float(row['Amount'])
+                            #formatted_amount = self._format_amount_as_k(amount)
+                            #markdown_lines.append(f"- {deal_name} - {formatted_amount}")
                             
                             markdown_lines.append("")
-                        else:
-                            # Include empty sections for completeness
-                            #markdown_lines.append(f"#### {engagement_type}\n")
-                            #markdown_lines.append("**Total:** $0\n")
-                            #markdown_lines.append("**Leads:** None\n\n")
+                        # else:
+                        #     # Include empty sections for completeness
+                        #     #markdown_lines.append(f"#### {engagement_type}\n")
+                        #     #markdown_lines.append("**Total:** $0\n")
+                        #     #markdown_lines.append("**Leads:** None\n\n")
+                        pass
                             
                     except Exception as e:
                         # Handle any errors gracefully
