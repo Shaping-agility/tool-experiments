@@ -50,14 +50,25 @@ class SalesLeadAnalyzer:
         return self.spreadsheet_manager.readRangeAsDataFrame(sheet_name=self._sheet_name)
     
     def _add_sector_field(self):
-        """Add a calculated Sector field based on Deal owner."""
+        """Add a calculated Sector field based on Deal owner and engagement type."""
         if self._dataframe is None:
             return
         
         industry_owners = self._get_industry_owners()
-        self._dataframe['Sector'] = self._dataframe['Deal owner'].apply(
-            lambda owner: "Industry" if owner in industry_owners else "Government"
-        )
+        
+        def determine_sector(row):
+            """Determine sector based on deal owner and engagement type."""
+            owner = row['Deal owner']
+            engagement_type = row['Engagement Type']
+            
+            # Handle "Consulting Government" as Government
+            if engagement_type == "Consulting Government":
+                return "Government"
+            
+            # Use deal owner logic for other cases
+            return "Industry" if owner in industry_owners else "Government"
+        
+        self._dataframe['Sector'] = self._dataframe.apply(determine_sector, axis=1)
     
     def _get_industry_owners(self) -> list[str]:
         """Get the list of deal owners classified as Industry."""
@@ -194,3 +205,58 @@ class SalesLeadAnalyzer:
     def __exit__(self, exc_type, exc_val, exc_tb):
         """Context manager exit."""
         self.close() 
+
+    def getSummaryMarkdown(self) -> str:
+        """Generate markdown summary for all sectors, convictions, and engagement types.
+        
+        Returns:
+            Markdown formatted string with comprehensive leads summary
+            
+        Raises:
+            RuntimeError: If data hasn't been loaded yet
+        """
+        self._ensure_data_loaded()
+        
+        sectors = ["Industry", "Government"]
+        convictions = ["High", "Medium"]
+        engagement_types = ["Product", "Consulting", "Product & Consulting"]
+        
+        markdown_lines = ["# Sales Lead Summary\n"]
+        
+        for sector in sectors:
+            # markdown_lines.append(f"## {sector}\n")
+            
+            for conviction in convictions:
+                #markdown_lines.append(f"### {conviction} Conviction\n")
+                
+                for engagement_type in engagement_types:
+                    try:
+                        leads_df = self.getSummaryLeads(sector, conviction, engagement_type)
+                        total = self.getSummaryTotal(sector, conviction, engagement_type)
+                        
+                        if len(leads_df) > 0:
+                            markdown_lines.append(f"## {sector} {conviction} conviction {engagement_type} - ${total:,.0f}\n")
+                            # markdown_lines.append(f"#### {engagement_type}\n")
+                            # markdown_lines.append(f"**Total:** ${total:,.0f}\n")
+                            # markdown_lines.append("**Leads:**\n")
+                            
+                            for _, row in leads_df.iterrows():
+                                markdown_lines.append(f"{self.getSummaryText(sector, conviction, engagement_type)}\n")
+                                #deal_name = str(row['Deal Name'])
+                                #amount = float(row['Amount'])
+                                #formatted_amount = self._format_amount_as_k(amount)
+                                #markdown_lines.append(f"- {deal_name} - {formatted_amount}")
+                            
+                            markdown_lines.append("")
+                        else:
+                            # Include empty sections for completeness
+                            #markdown_lines.append(f"#### {engagement_type}\n")
+                            #markdown_lines.append("**Total:** $0\n")
+                            #markdown_lines.append("**Leads:** None\n\n")
+                            
+                    except Exception as e:
+                        # Handle any errors gracefully
+                        markdown_lines.append(f"#### {engagement_type}\n")
+                        markdown_lines.append(f"**Error:** {str(e)}\n\n")
+        
+        return "\n".join(markdown_lines) 
