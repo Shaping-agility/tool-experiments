@@ -51,7 +51,7 @@ class MonthlySummaryProducer:
             
             # Generate leads summary
             print("Generating leads summary...")
-            leads_content = self._generate_leads_summary()
+            leads_content = self._generate_leads_summary(month, year)
             leads_filename = f"Sales Lead Summary {self._get_month_name(month)} {year}.md"
             self._write_file(leads_filename, leads_content)
             print(f"✓ Leads summary written to {leads_filename}")
@@ -127,14 +127,14 @@ class MonthlySummaryProducer:
         finally:
             analyzer.close()
     
-    def _generate_leads_summary(self) -> str:
-        """Generate leads summary markdown using existing SalesLeadAnalyzer methods.
-        
-        Returns:
-            Markdown formatted string with leads summary
-        """
-        analyzer = SalesLeadAnalyzer(sheet_name="All deals")
-        
+    def _generate_leads_summary(self, month: int, year: int) -> str:
+        """Generate leads summary markdown using existing SalesLeadAnalyzer methods, selecting the correct file for the month/year."""
+        # Use Leads v2.xlsx for June 2025, otherwise use Leads.xlsx
+        if month == 6 and year == 2025:
+            leads_file = self.raw_dir / "Leads v2.xlsx"
+        else:
+            leads_file = self.raw_dir / "Leads.xlsx"
+        analyzer = SalesLeadAnalyzer(leads_file, sheet_name="All deals")
         try:
             analyzer.load_data()
             return analyzer.getSummaryMarkdown()

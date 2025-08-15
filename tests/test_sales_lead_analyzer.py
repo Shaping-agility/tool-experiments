@@ -103,6 +103,124 @@ class TestSalesLeadAnalyzer:
         assert "Westpac" in all_text, "Expected 'Westpac' in summary text"
         assert "Central" in all_text, "Expected 'Central' in summary text"
     
+    @pytest.mark.primary
+    def test_can_load_leads_v2_spreadsheet(self):
+        """Primary test: Shows how to load leads v2 data from spreadsheet with new format."""
+        leads_v2_file_path = Path("data/raw/Leads v2.xlsx")
+        analyzer_v2 = SalesLeadAnalyzer(leads_v2_file_path, sheet_name="All deals")
+        
+        try:
+            df = analyzer_v2.load_data()
+            assert df is not None
+            assert isinstance(df, pd.DataFrame)
+            assert len(df) > 0
+            assert len(df.columns) > 0
+            assert analyzer_v2._dataframe is not None
+            assert analyzer_v2._dataframe.equals(df)
+            
+            # Verify the new structure
+            assert df.shape == (37, 16), f"Expected (37, 16) for v2, got {df.shape}"
+            assert 'Sector' in df.columns, "Sector column should be added to DataFrame"
+            
+            # Verify all key columns are present
+            key_columns = ['Deal Name', 'Deal owner', 'Amount', 'Sale Conviction', 'Engagement Type']
+            for col in key_columns:
+                assert col in df.columns, f"Key column {col} should be present"
+            
+            # Verify new columns are present
+            new_columns = ['Close Date', 'HubSpot Team']
+            for col in new_columns:
+                assert col in df.columns, f"New column {col} should be present"
+            
+            # Check for the formula-based amount column (may have different name)
+            amount_formula_columns = [col for col in df.columns if 'TEXT' in str(col) or 'Amount' in str(col)]
+            assert len(amount_formula_columns) >= 2, f"Expected at least 2 amount-related columns, found: {amount_formula_columns}"
+            
+            retrieved_df = analyzer_v2.get_dataframe()
+            assert retrieved_df.equals(df)
+            
+        finally:
+            analyzer_v2.close()
+    
+    @pytest.mark.primary
+    def test_sector_field_calculation_v2(self):
+        """Primary test: Demonstrates sector calculation with v2 format including null handling."""
+        leads_v2_file_path = Path("data/raw/Leads v2.xlsx")
+        analyzer_v2 = SalesLeadAnalyzer(leads_v2_file_path, sheet_name="All deals")
+        
+        try:
+            df = analyzer_v2.load_data()
+            assert 'Sector' in df.columns, "Sector column should be added to DataFrame"
+            assert len(df.columns) == 16, f"Expected 16 columns after adding Sector, got {len(df.columns)}"
+            
+            # Check that null deal owners are handled (default to Government)
+            null_owner_rows = df[df['Deal owner'].isnull()]
+            if len(null_owner_rows) > 0:
+                for _, row in null_owner_rows.iterrows():
+                    assert row['Sector'] == "Government", f"Null owner should be Government, got {row['Sector']}"
+            
+            # Check industry owners are correctly classified
+            industry_owners = ["Hamish Bignell", "Paul Tardio", "Beth Reeve", "Katie King"]
+            for owner in industry_owners:
+                owner_rows = df[df['Deal owner'] == owner]
+                if len(owner_rows) > 0:
+                    for _, row in owner_rows.iterrows():
+                        assert row['Sector'] == "Industry", f"Owner {owner} should be classified as Industry"
+            
+            # Check non-industry owners are Government
+            non_industry_rows = df[~df['Deal owner'].isin(industry_owners) & ~df['Deal owner'].isnull()]
+            for _, row in non_industry_rows.iterrows():
+                assert row['Sector'] == "Government", f"Owner {row['Deal owner']} should be classified as Government"
+                
+        finally:
+            analyzer_v2.close()
+    
+    @pytest.mark.primary
+    def test_getSummaryLeads_method_v2(self):
+        """Primary test: Shows the main filtering capability with v2 format."""
+        leads_v2_file_path = Path("data/raw/Leads v2.xlsx")
+        analyzer_v2 = SalesLeadAnalyzer(leads_v2_file_path, sheet_name="All deals")
+        
+        try:
+            analyzer_v2.load_data()
+            result_df = analyzer_v2.getSummaryLeads(sector="Government", conviction="High", engagement_type="Product")
+            assert isinstance(result_df, pd.DataFrame)
+            assert len(result_df) >= 0, f"Expected >= 0 rows, got {len(result_df)}"
+            expected_columns = ['Deal Name', 'Deal owner', 'Amount']
+            assert list(result_df.columns) == expected_columns, f"Expected columns {expected_columns}, got {list(result_df.columns)}"
+            
+            # Verify the results are consistent with the full dataset
+            full_df = analyzer_v2.get_dataframe()
+            for _, row in result_df.iterrows():
+                matching_rows = full_df[full_df['Deal Name'] == row['Deal Name']]
+                assert len(matching_rows) == 1, f"Should find exactly one matching row for {row['Deal Name']}"
+                matching_row = matching_rows.iloc[0]
+                assert matching_row['Sector'] == "Government", f"Expected Government sector for {row['Deal Name']}"
+                assert matching_row['Sale Conviction'] == "High", f"Expected High conviction for {row['Deal Name']}"
+                assert matching_row['Engagement Type'] == "Product", f"Expected Product engagement type for {row['Deal Name']}"
+                
+        finally:
+            analyzer_v2.close()
+    
+    @pytest.mark.primary
+    def test_getSummaryTotal_method_v2(self):
+        """Primary test: Shows the main aggregation capability with v2 format."""
+        leads_v2_file_path = Path("data/raw/Leads v2.xlsx")
+        analyzer_v2 = SalesLeadAnalyzer(leads_v2_file_path, sheet_name="All deals")
+        
+        try:
+            analyzer_v2.load_data()
+            total = analyzer_v2.getSummaryTotal(sector="Government", conviction="High", engagement_type="Product")
+            assert isinstance(total, float)
+            assert total >= 0, f"Expected total >= 0, got {total}"
+            
+            # Test with no matches
+            zero_total = analyzer_v2.getSummaryTotal(sector="Industry", conviction="Low", engagement_type="Nonexistent")
+            assert zero_total == 0, f"Expected total 0 for no matches, got {zero_total}"
+            
+        finally:
+            analyzer_v2.close()
+    
     # ============================================================================
     # COVERAGE TESTS - Resilience & Edge Cases
     # ============================================================================
@@ -195,4 +313,27 @@ class TestSalesLeadAnalyzer:
             analyzer.get_dataframe()
         assert "Data not loaded" in str(exc_info.value)
         analyzer.close()
+    
+    def test_missing_industry_owners_logging(self):
+        """Coverage test: Verify missing industry owners are logged for v2 format."""
+        leads_v2_file_path = Path("data/raw/Leads v2.xlsx")
+        analyzer_v2 = SalesLeadAnalyzer(leads_v2_file_path, sheet_name="All deals")
+        
+        try:
+            # Capture stdout to check for warning messages
+            import io
+            import sys
+            from contextlib import redirect_stdout
+            
+            f = io.StringIO()
+            with redirect_stdout(f):
+                analyzer_v2.load_data()
+            
+            output = f.getvalue()
+            # Check that the warning about missing Beth Reeve is logged
+            assert "Warning: Missing industry owners in dataset" in output
+            assert "Beth Reeve" in output
+            
+        finally:
+            analyzer_v2.close()
     

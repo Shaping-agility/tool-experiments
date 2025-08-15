@@ -56,10 +56,17 @@ class SalesLeadAnalyzer:
         
         industry_owners = self._get_industry_owners()
         
+        # Log missing industry owners for monitoring
+        self._log_missing_industry_owners(industry_owners)
+        
         def determine_sector(row):
             """Determine sector based on deal owner and engagement type."""
             owner = row['Deal owner']
             engagement_type = row['Engagement Type']
+            
+            # Handle null deal owner - default to Government
+            if pd.isna(owner) or owner is None:
+                return "Government"
             
             # Handle "Consulting Government" as Government
             if engagement_type == "Consulting Government":
@@ -73,6 +80,21 @@ class SalesLeadAnalyzer:
     def _get_industry_owners(self) -> list[str]:
         """Get the list of deal owners classified as Industry."""
         return ["Hamish Bignell", "Paul Tardio", "Beth Reeve", "Katie King"]
+    
+    def _log_missing_industry_owners(self, industry_owners: list[str]):
+        """Log any missing industry owners in the current dataset for monitoring purposes."""
+        if self._dataframe is None:
+            return
+        
+        # Get unique deal owners from the data
+        data_owners = set(self._dataframe['Deal owner'].dropna().unique())
+        
+        # Find missing industry owners
+        missing_owners = set(industry_owners) - data_owners
+        
+        if missing_owners:
+            print(f"Warning: Missing industry owners in dataset: {missing_owners}")
+            print(f"Available deal owners: {sorted(data_owners)}")
     
     def getSummaryLeads(self, sector: str, conviction: str, engagement_type: str) -> pd.DataFrame:
         """Get a filtered summary of leads based on sector, conviction, and engagement type.
