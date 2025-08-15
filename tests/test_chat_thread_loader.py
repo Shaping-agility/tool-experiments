@@ -12,6 +12,7 @@ class TestEmailChatThreadLoader:
         """Set up test fixtures."""
         self.loader = EmailChatThreadLoader()
         self.raw_dir = Path("data/raw")
+        self.july_dir = Path( "data/raw/July Messages")
     
     # Golden example of expected subjects (sorted alphabetically)
     EXPECTED_SUBJECTS = [
@@ -53,6 +54,9 @@ class TestEmailChatThreadLoader:
     # PRIMARY TESTS - Core Functional Behavior
     # ============================================================================
     
+  
+
+
     @pytest.mark.primary
     @pytest.mark.parametrize("eml_file,expected_subject,expected_participants,expected_message_count", [
         (
